@@ -1,0 +1,29 @@
+{
+  "rules": {
+    "ActiveUserKeys": {
+      "$key": {
+        ".read": true,
+        ".write": true,
+        ".validate": "newData.hasChildren(['createdAt', 'durationHours', 'boundDeviceId'])",
+        "createdAt": {
+          ".validate": "newData.val() <= now"
+        },
+        "durationHours": {
+          ".validate": "newData.isNumber() && newData.val() > 0"
+        },
+        "isUsed": {
+          ".validate": "newData.isBoolean()"
+        },
+        "boundDeviceId": {
+          ".validate": "newData.isString()"
+        },
+        "type": {
+          ".validate": "newData.isString()"
+        },
+        "note": {
+          ".validate": "newData.isString()"
+        }
+      }
+    }
+  }
+}
