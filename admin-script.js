@@ -8,6 +8,41 @@ let db = mainDb;
 let globalKeysData = [];
 let globalSecondaryFirebases = [];
 let keysChartInstance = null;
+
+// ===== CUSTOM SELECT HANDLER =====
+window._selectCS = function(el) {
+    const container = el.closest('.custom-select');
+    const hiddenInput = container.querySelector('input[type="hidden"]');
+    const selectedSpan = container.querySelector('.cs-selected');
+    
+    container.querySelectorAll('.cs-option').forEach(o => o.classList.remove('active'));
+    el.classList.add('active');
+    selectedSpan.textContent = el.textContent;
+    hiddenInput.value = el.dataset.value;
+    container.classList.remove('open');
+    
+    const eventId = container.dataset.id;
+    if (eventId === 'auditTypeFilter') window.filterAuditLogs();
+};
+
+document.addEventListener('click', (e) => {
+    document.querySelectorAll('.custom-select.open').forEach(cs => {
+        if (!cs.contains(e.target)) cs.classList.remove('open');
+    });
+});
+
+function syncCustomSelect(id) {
+    const input = document.getElementById(id);
+    if (!input) return;
+    const container = input.closest('.custom-select');
+    if (!container) return;
+    const val = input.value;
+    const opts = container.querySelectorAll('.cs-option');
+    opts.forEach(o => {
+        o.classList.toggle('active', o.dataset.value === val);
+        if (o.dataset.value === val) container.querySelector('.cs-selected').textContent = o.textContent;
+    });
+}
 let cleanupInterval = null;
 let saveTimeout = null;
 let allDbKeys = {}; 
@@ -661,6 +696,7 @@ function loadData() {
         const data = snap.exists() ? snap.val() : {};
         if (data.cooldownHours) document.getElementById('settingCooldown').value = data.cooldownHours;
         if (data.maxKeysLimit) document.getElementById('settingMaxKeys').value = data.maxKeysLimit;
+        if (data.showLimitsOnUser !== undefined) document.getElementById('showLimitsToggle').checked = data.showLimitsOnUser;
         if (data.maintenanceMode !== undefined) document.getElementById('maintModeToggle').checked = data.maintenanceMode;
         if (data.autoCleanupEnabled !== undefined) document.getElementById('autoCleanupToggle').checked = data.autoCleanupEnabled;
         
@@ -679,24 +715,30 @@ function loadData() {
             if (hours === 99999) {
                 document.getElementById('customTimeVal').value = 1;
                 document.getElementById('customTimeType').value = 'hours';
+                syncCustomSelect('customTimeType');
                 document.getElementById('lifetimeCheck').checked = true;
                 document.getElementById('customTimeVal').disabled = true;
                 document.getElementById('customTimeType').disabled = true;
             } else if (hours >= 24 && hours % 24 === 0) {
                 document.getElementById('customTimeVal').value = hours / 24;
                 document.getElementById('customTimeType').value = 'days';
+                syncCustomSelect('customTimeType');
                 document.getElementById('lifetimeCheck').checked = false;
                 document.getElementById('customTimeVal').disabled = false;
                 document.getElementById('customTimeType').disabled = false;
             } else {
                 document.getElementById('customTimeVal').value = hours;
                 document.getElementById('customTimeType').value = 'hours';
+                syncCustomSelect('customTimeType');
                 document.getElementById('lifetimeCheck').checked = false;
                 document.getElementById('customTimeVal').disabled = false;
                 document.getElementById('customTimeType').disabled = false;
             }
         }
-        if (data.defaultKeyTier) document.getElementById('keyTypeInput').value = data.defaultKeyTier;
+        if (data.defaultKeyTier) {
+            document.getElementById('keyTypeInput').value = data.defaultKeyTier;
+            syncCustomSelect('keyTypeInput');
+        }
     });
 
     // Activity Log with real-time listener + get() fallback
@@ -762,7 +804,12 @@ function loadFirebaseHub() {
                 tbody.innerHTML += `<tr>
                     <td style="color:#60a5fa;font-weight:500;">${cfg.projectName}</td>
                     <td style="font-size:12px;color:#a1a1aa;">${cfg.databaseURL}</td>
-                    <td><button class="action-icon icon-del" data-fb="${fbId}"><i class="fa-solid fa-trash"></i></button></td>
+                    <td>
+                        <div style="display:flex;gap:5px;">
+                            <button class="action-icon icon-edit" data-fb-edit='${JSON.stringify({fbId,config:cfg})}' title="Edit"><i class="fa-solid fa-pen"></i></button>
+                            <button class="action-icon icon-del" data-fb="${fbId}" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </td>
                 </tr>`;
             });
         }
@@ -788,6 +835,40 @@ function loadFirebaseHub() {
                 } catch (e) { showToast(e.message, true); }
             });
         });
+
+        document.querySelectorAll('[data-fb-edit]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                try {
+                    const data = JSON.parse(this.dataset.fbEdit);
+                    const cfg = data.config;
+                    const fbId = data.fbId;
+                    document.getElementById('fbName').value = cfg.projectName || '';
+                    document.getElementById('fbApiKey').value = cfg.apiKey || '';
+                    document.getElementById('fbDatabaseURL').value = cfg.databaseURL || '';
+                    document.getElementById('fbAuthDomain').value = cfg.authDomain || '';
+                    document.getElementById('fbProjectId').value = cfg.projectId || '';
+                    document.getElementById('fbAppId').value = cfg.appId || '';
+                    
+                    const addBtn = document.getElementById('addFbBtn');
+                    addBtn.innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Update Hub';
+                    addBtn.dataset.editId = fbId;
+                    addBtn.dataset.editOldName = cfg.projectName;
+                    
+                    let cancelBtn = document.getElementById('cancelEditBtn');
+                    if (!cancelBtn) {
+                        cancelBtn = document.createElement('button');
+                        cancelBtn.id = 'cancelEditBtn';
+                        cancelBtn.className = 'btn-outline';
+                        cancelBtn.style.cssText = 'margin-top:8px; border-color:#ef4444; color:#ef4444;';
+                        cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Cancel Edit';
+                        cancelBtn.onclick = window._cancelFbEdit;
+                        addBtn.parentNode.insertBefore(cancelBtn, addBtn.nextSibling);
+                    }
+                    cancelBtn.style.display = 'block';
+                    showToast("Editing: " + cfg.projectName);
+                } catch(e) { console.error(e); }
+            });
+        });
     });
 }
 
@@ -799,6 +880,17 @@ function validateFirebaseConfig(cfg) {
     if (!cfg.projectId) errors.push("Missing Project ID");
     return errors;
 }
+
+window._cancelFbEdit = function() {
+    const addBtn = document.getElementById('addFbBtn');
+    addBtn.innerHTML = '<i class="fa-solid fa-link"></i> Connect Hub';
+    delete addBtn.dataset.editId;
+    delete addBtn.dataset.editOldName;
+    document.getElementById('cancelEditBtn').style.display = 'none';
+    ['fbName','fbApiKey','fbDatabaseURL','fbAuthDomain','fbProjectId','fbAppId'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
+};
 
 document.getElementById('addFbBtn')?.addEventListener('click', async function() {
     if (!db) return;
@@ -822,15 +914,34 @@ document.getElementById('addFbBtn')?.addEventListener('click', async function() 
     
     try {
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-        await set(ref(db, 'ConnectedFirebases/FB_' + Date.now()), { 
-            projectName: name, apiKey, authDomain, databaseURL: dbURL, projectId, appId 
-        });
-        await logAdminActivity("Added Mirror DB", name, {}, "ADD_DB");
+        const isEdit = !!btn.dataset.editId;
+        
+        if (isEdit) {
+            const editId = btn.dataset.editId;
+            const oldName = btn.dataset.editOldName;
+            await update(ref(db, 'ConnectedFirebases/' + editId), { 
+                projectName: name, apiKey, authDomain, databaseURL: dbURL, projectId, appId 
+            });
+            await logAdminActivity("Updated Mirror DB", `${oldName} → ${name}`, { editId }, "UPDATE_DB");
+            showToast("Hub Updated Successfully!");
+            addNotification(`Mirror DB "${name}" updated`);
+            window._cancelFbEdit();
+        } else {
+            await set(ref(db, 'ConnectedFirebases/FB_' + Date.now()), { 
+                projectName: name, apiKey, authDomain, databaseURL: dbURL, projectId, appId 
+            });
+            await logAdminActivity("Added Mirror DB", name, {}, "ADD_DB");
+            showToast("Hub Connected & Syncing Started!");
+            addNotification(`Mirror DB "${name}" connected`);
+        }
+        
         document.querySelectorAll('#firebaseHub input, #firebaseHub textarea').forEach(inp => inp.value = '');
         btn.innerHTML = '<i class="fa-solid fa-link"></i> Connect Hub';
-        showToast("Hub Connected & Syncing Started!");
-        addNotification(`Mirror DB "${name}" connected`);
-    } catch (e) { showToast(e.message, true); btn.innerHTML = '<i class="fa-solid fa-link"></i> Connect Hub'; }
+    } catch (e) { 
+        const wasEdit = !!btn.dataset.editId;
+        showToast(e.message, true); 
+        btn.innerHTML = wasEdit ? '<i class="fa-solid fa-pen-to-square"></i> Update Hub' : '<i class="fa-solid fa-link"></i> Connect Hub';
+    }
 });
 
 document.getElementById('configPaste')?.addEventListener('input', function(e) {
@@ -945,10 +1056,11 @@ document.getElementById('saveRulesBtn')?.addEventListener('click', async functio
         const oldSettings = { cooldownHours: oldDB.cooldownHours ?? 24, maxKeysLimit: oldDB.maxKeysLimit ?? 5 };
         const newSettings = {
             cooldownHours: parseInt(document.getElementById('settingCooldown').value) || 24,
-            maxKeysLimit: parseInt(document.getElementById('settingMaxKeys').value) || 5
+            maxKeysLimit: parseInt(document.getElementById('settingMaxKeys').value) || 5,
+            showLimitsOnUser: document.getElementById('showLimitsToggle').checked
         };
         await update(ref(db, 'SystemSettings'), newSettings);
-        await logAdminActivity("Updated Limits", `New Limit: ${newSettings.maxKeysLimit} | Cooldown: ${newSettings.cooldownHours}h`, { oldSettings }, "SETTINGS");
+        await logAdminActivity("Updated Limits", `New Limit: ${newSettings.maxKeysLimit} | Cooldown: ${newSettings.cooldownHours}h | Show Limits: ${newSettings.showLimitsOnUser ? 'ON' : 'OFF'}`, { oldSettings }, "SETTINGS");
         showToast("Rules Saved!");
         addNotification("User limits updated");
     } catch (e) { showToast(e.message, true); }

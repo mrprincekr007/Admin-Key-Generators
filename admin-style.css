@@ -93,6 +93,152 @@ input, select, textarea { box-sizing: border-box !important; max-width: 100%; }
 .input-label { display: block; color: #a1a1aa; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; transition: color 0.3s; }
 .input-label:hover { color: #d4d4d8; }
 
+/* ===== PREMIUM SELECT DROPDOWN ===== */
+select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 100%;
+    padding: 14px 42px 14px 18px;
+    border-radius: 10px;
+    border: 1px solid #3f3f46;
+    background: #18181b url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23818cf8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 16px center;
+    color: #e4e4e7;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-bottom: 15px;
+    display: block;
+}
+select:hover {
+    border-color: #6366f1;
+    background-color: #1e1e2a;
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.15);
+}
+select:focus {
+    outline: none;
+    border-color: #818cf8;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15), 0 0 20px rgba(99, 102, 241, 0.1);
+}
+
+/* ===== CUSTOM SELECT DROPDOWN ===== */
+.custom-select {
+    position: relative;
+    width: 100%;
+    margin-bottom: 15px;
+    user-select: none;
+}
+.custom-select .cs-trigger {
+    width: 100%;
+    padding: 14px 42px 14px 18px;
+    border-radius: 10px;
+    border: 1px solid #3f3f46;
+    background: #18181b;
+    color: #e4e4e7;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.custom-select .cs-trigger:hover {
+    border-color: #6366f1;
+    background: #1e1e2a;
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.15);
+}
+.custom-select.open .cs-trigger {
+    border-color: #818cf8;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15), 0 0 20px rgba(99, 102, 241, 0.1);
+}
+.cs-arrow {
+    color: #818cf8;
+    font-size: 12px;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.custom-select.open .cs-arrow {
+    transform: rotate(180deg);
+}
+.cs-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: #1a1a2e;
+    border: 1px solid #3f3f46;
+    border-radius: 10px;
+    padding: 6px;
+    z-index: 999;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5), 0 0 15px rgba(99, 102, 241, 0.1);
+}
+.custom-select.open .cs-dropdown {
+    max-height: 300px;
+    opacity: 1;
+    pointer-events: auto;
+    overflow-y: auto;
+}
+.cs-option {
+    padding: 11px 16px;
+    border-radius: 8px;
+    color: #a1a1aa;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.cs-option::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: transparent;
+    border: 1.5px solid #3f3f46;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+.cs-option:hover {
+    background: rgba(99, 102, 241, 0.1);
+    color: #e4e4e7;
+}
+.cs-option:hover::before {
+    border-color: #6366f1;
+}
+.cs-option.active {
+    background: rgba(99, 102, 241, 0.12);
+    color: #818cf8;
+}
+.cs-option.active::before {
+    background: #818cf8;
+    border-color: #818cf8;
+    box-shadow: 0 0 8px rgba(129, 140, 248, 0.4);
+}
+.cs-option.active:hover {
+    background: rgba(99, 102, 241, 0.18);
+}
+.cs-dropdown::-webkit-scrollbar { width: 4px; }
+.cs-dropdown::-webkit-scrollbar-track { background: transparent; }
+.cs-dropdown::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+.cs-dropdown::-webkit-scrollbar-thumb:hover { background: #6366f1; }
+
+/* Custom select dark variant for inputs */
+.cs-input-dark .cs-trigger {
+    background: #18181b;
+    margin-bottom: 15px;
+}
+.cs-input-dark .cs-trigger:hover {
+    background: #1e1e2a;
+}
+
 /* ===== TOGGLE SWITCH ===== */
 .switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
 .switch input { opacity: 0; width: 0; height: 0; }
@@ -413,6 +559,8 @@ tr:hover td { background: rgba(99, 102, 241, 0.04); }
     .btn-outline { padding: 10px 14px; font-size: 13px; }
 
     .input-dark { padding: 12px 14px; font-size: 13px; }
+    .custom-select .cs-trigger { padding: 12px 14px; font-size: 13px; }
+    .cs-dropdown { max-height: 250px; }
 
     .nav-links a { padding: 12px 16px; font-size: 13px; gap: 12px; margin-bottom: 4px; }
     .nav-links i { font-size: 16px; width: 22px; }

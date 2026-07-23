@@ -89,16 +89,23 @@
                             <button class="btn-outline" onclick="window.clearActivityLog()" style="width: auto; padding: 5px 15px; font-size: 12px; border-radius: 50px;">Clear History</button>
                         </div>
                         <div class="audit-filters" id="auditFilters">
-                            <select id="auditTypeFilter" onchange="window.filterAuditLogs()">
-                                <option value="all">All Actions</option>
-                                <option value="CREATE_KEY">Key Created</option>
-                                <option value="DELETE_KEY">Key Deleted</option>
-                                <option value="EDIT_KEY">Key Edited</option>
-                                <option value="RESET_KEY">Device Unbound</option>
-                                <option value="BAN_DEVICE">Device Banned</option>
-                                <option value="SETTINGS">Settings Changed</option>
-                                <option value="LOGIN">Admin Login</option>
-                            </select>
+                            <div class="custom-select" data-id="auditTypeFilter">
+                                <div class="cs-trigger" onclick="this.parentElement.classList.toggle('open')">
+                                    <span class="cs-selected">All Actions</span>
+                                    <i class="fa-solid fa-chevron-down cs-arrow"></i>
+                                </div>
+                                <div class="cs-dropdown">
+                                    <div class="cs-option active" data-value="all" onclick="window._selectCS(this)">All Actions</div>
+                                    <div class="cs-option" data-value="CREATE_KEY" onclick="window._selectCS(this)">Key Created</div>
+                                    <div class="cs-option" data-value="DELETE_KEY" onclick="window._selectCS(this)">Key Deleted</div>
+                                    <div class="cs-option" data-value="EDIT_KEY" onclick="window._selectCS(this)">Key Edited</div>
+                                    <div class="cs-option" data-value="RESET_KEY" onclick="window._selectCS(this)">Device Unbound</div>
+                                    <div class="cs-option" data-value="BAN_DEVICE" onclick="window._selectCS(this)">Device Banned</div>
+                                    <div class="cs-option" data-value="SETTINGS" onclick="window._selectCS(this)">Settings Changed</div>
+                                    <div class="cs-option" data-value="LOGIN" onclick="window._selectCS(this)">Admin Login</div>
+                                </div>
+                                <input type="hidden" id="auditTypeFilter" value="all">
+                            </div>
                             <input type="date" id="auditDateFrom" onchange="window.filterAuditLogs()" placeholder="From">
                             <input type="date" id="auditDateTo" onchange="window.filterAuditLogs()" placeholder="To">
                         </div>
@@ -125,10 +132,17 @@
                         <div class="form-grid">
                             <div>
                                 <span class="input-label">Token Tier</span>
-                                <select id="keyTypeInput" class="input-dark" style="margin-bottom:0;">
-                                    <option value="normal">Standard (PH-)</option>
-                                    <option value="vip">Premium (VIP-)</option>
-                                </select>
+                                <div class="custom-select cs-input-dark" data-id="keyTypeInput">
+                                    <div class="cs-trigger" onclick="this.parentElement.classList.toggle('open')">
+                                        <span class="cs-selected">Standard (PH-)</span>
+                                        <i class="fa-solid fa-chevron-down cs-arrow"></i>
+                                    </div>
+                                    <div class="cs-dropdown">
+                                        <div class="cs-option active" data-value="normal" onclick="window._selectCS(this)">Standard (PH-)</div>
+                                        <div class="cs-option" data-value="vip" onclick="window._selectCS(this)">Premium (VIP-)</div>
+                                    </div>
+                                    <input type="hidden" id="keyTypeInput" value="normal">
+                                </div>
                             </div>
                             <div>
                                 <span class="input-label">Key Alias / Note (Optional)</span>
@@ -142,10 +156,17 @@
                             </div>
                             <div>
                                 <span class="input-label">Time Format</span>
-                                <select id="customTimeType" class="input-dark">
-                                    <option value="hours">Hours</option>
-                                    <option value="days">Days</option>
-                                </select>
+                                <div class="custom-select cs-input-dark" data-id="customTimeType">
+                                    <div class="cs-trigger" onclick="this.parentElement.classList.toggle('open')">
+                                        <span class="cs-selected">Hours</span>
+                                        <i class="fa-solid fa-chevron-down cs-arrow"></i>
+                                    </div>
+                                    <div class="cs-dropdown">
+                                        <div class="cs-option active" data-value="hours" onclick="window._selectCS(this)">Hours</div>
+                                        <div class="cs-option" data-value="days" onclick="window._selectCS(this)">Days</div>
+                                    </div>
+                                    <input type="hidden" id="customTimeType" value="hours">
+                                </div>
                             </div>
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin: 15px 0 25px 0;">
@@ -172,7 +193,11 @@
                         <input type="number" id="settingCooldown" class="input-dark" placeholder="e.g. 24" value="24" min="1">
                         <span class="input-label">Maximum Keys Limit</span>
                         <input type="number" id="settingMaxKeys" class="input-dark" placeholder="e.g. 5" value="5" min="1">
-                        <button class="btn-outline" id="saveRulesBtn" style="border-color:#6366f1; color:#6366f1;">Save Rules to DB</button>
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:8px;">
+                            <span style="color:#a1a1aa;font-size:13px;"><i class="fa-solid fa-eye"></i> Show Limits on User Panel</span>
+                            <label class="toggle"><input type="checkbox" id="showLimitsToggle" checked><span class="toggle-slider"></span></label>
+                        </div>
+                        <button class="btn-outline" id="saveRulesBtn" style="border-color:#6366f1; color:#6366f1; margin-top:12px;">Save Rules to DB</button>
                     </div>
                 </div>
             </div>
