@@ -8,43 +8,9 @@
     <link rel="stylesheet" href="admin-style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        #statusOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 99999; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); transition: opacity 0.6s ease; pointer-events: none; }
-        #statusOverlay.hidden { opacity: 0; pointer-events: none; }
-        #statusBox { background: rgba(24, 24, 27, 0.95); border: 1px solid #6366f1; border-radius: 16px; padding: 30px 50px; text-align: center; box-shadow: 0 0 60px rgba(99, 102, 241, 0.3); }
-        #statusBox .spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-radius: 50%; border-top-color: #6366f1; animation: spin 1s linear infinite; margin: 0 auto 15px auto; }
-        #statusBox .status-text { font-size: 18px; font-weight: 600; color: #e4e4e7; }
-        #statusBox .status-sub { font-size: 13px; color: #a1a1aa; margin-top: 5px; }
-        #statusBox .status-ready { color: #34d399; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .session-timer { font-size: 12px; color: #a1a1aa; margin-left: 15px; }
-        .notification-bell { position: relative; cursor: pointer; }
-        .notification-badge { position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; font-size: 10px; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; }
-        .notification-dropdown { display: none; position: absolute; top: 100%; right: 0; width: 300px; background: #18181b; border: 1px solid #27272a; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 1000; max-height: 300px; overflow-y: auto; }
-        .notification-dropdown.show { display: block; }
-        .notification-item { padding: 12px 15px; border-bottom: 1px solid #27272a; font-size: 13px; color: #a1a1aa; }
-        .notification-item:last-child { border-bottom: none; }
-        .notification-item .notif-time { font-size: 11px; color: #52525b; margin-top: 4px; }
-        .bulk-actions { display: none; align-items: center; gap: 10px; padding: 12px 15px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 10px; margin-bottom: 15px; }
-        .bulk-actions.show { display: flex; flex-wrap: wrap; }
-        .bulk-actions span { font-size: 13px; color: #818cf8; font-weight: 500; }
-        .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 20px; }
-        .pagination button { background: #27272a; border: 1px solid #3f3f46; color: #a1a1aa; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; transition: 0.2s; }
-        .pagination button:hover { background: #3f3f46; color: #fff; }
-        .pagination button.active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
-        .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
-        .audit-filters { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
-        .audit-filters select, .audit-filters input { background: #18181b; border: 1px solid #3f3f46; color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
     </style>
 </head>
 <body>
-
-    <div id="statusOverlay">
-        <div id="statusBox">
-            <div class="spinner"></div>
-            <div class="status-text" id="statusText">Connecting to Firebase...</div>
-            <div class="status-sub" id="statusSub">Authenticating admin session</div>
-        </div>
-    </div>
 
     <div id="sidebarOverlay"></div>
     <div id="toastNotice">Saved Successfully</div>
@@ -75,12 +41,14 @@
                     <div class="notification-bell" id="notifBell" onclick="toggleNotifications()">
                         <i class="fa-solid fa-bell"></i>
                         <div class="notification-badge" id="notifBadge" style="display:none;">0</div>
-                        <div class="notification-dropdown" id="notifDropdown"></div>
+                        <div class="notification-dropdown" id="notifDropdown">
+                            <div class="notification-item" style="text-align:center;color:#52525b;">No notifications yet</div>
+                        </div>
                     </div>
-                    <span class="session-timer" id="sessionTimer">Session: 30:00</span>
+                    <span class="session-timer" id="sessionTimer">30:00</span>
                     <img src="logo.png" alt="Admin" onerror="this.src='https://cdn-icons-png.flaticon.com/512/149/149071.png'">
-                    <span style="font-size: 14px; font-weight: 600;">Admin</span>
-                    <button onclick="window.logoutAdmin()" style="background:transparent; border:none; color:#ef4444; cursor:pointer; margin-left:10px;">
+                    <span class="admin-name">Admin</span>
+                    <button class="logout-btn" onclick="window.logoutAdmin()" style="background:transparent; border:none; color:#ef4444; cursor:pointer; padding:4px;">
                         <i class="fa-solid fa-right-from-bracket"></i>
                     </button>
                 </div>
@@ -88,8 +56,8 @@
 
             <!-- ===== DASHBOARD ===== -->
             <div id="dashboard" class="page-section active">
-                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-                    <h2 class="section-title" style="margin:0;"><i class="fa-solid fa-chart-line"></i> System Overview</h2>
+                <div class="page-header">
+                    <h2 class="section-title"><i class="fa-solid fa-chart-line"></i> System Overview</h2>
                     <button class="btn-outline" onclick="window.refreshDashboard()" style="width:auto;padding:8px 16px;font-size:13px;border-radius:50px;"><i class="fa-solid fa-rotate"></i> Refresh</button>
                 </div>
                 <div class="stats-grid">
@@ -109,15 +77,15 @@
                 <div class="dashboard-grid">
                     <div class="glow-card" style="grid-column: 1 / -1;">
                         <h3 style="font-size: 16px; margin-bottom: 15px;"><i class="fa-solid fa-chart-area"></i> Last 30 Days Key Generations</h3>
-                        <div style="position: relative; height: 250px; width: 100%;">
+                        <div class="chart-container">
                             <canvas id="keysChart"></canvas>
                         </div>
                     </div>
                 </div>
                 <div class="dashboard-grid">
                     <div class="glow-card" style="grid-column: 1 / -1;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h3 style="font-size: 16px; margin:0;"><i class="fa-solid fa-clipboard-list"></i> Admin Activity Log</h3>
+                        <div class="log-header">
+                            <h3 style="font-size: 16px;"><i class="fa-solid fa-clipboard-list"></i> Admin Activity Log</h3>
                             <button class="btn-outline" onclick="window.clearActivityLog()" style="width: auto; padding: 5px 15px; font-size: 12px; border-radius: 50px;">Clear History</button>
                         </div>
                         <div class="audit-filters" id="auditFilters">
@@ -148,7 +116,9 @@
 
             <!-- ===== GENERATOR & RULES ===== -->
             <div id="generator" class="page-section">
-                <h2 class="section-title"><i class="fa-solid fa-bolt"></i> Generator System</h2>
+                <div class="page-header">
+                    <h2 class="section-title"><i class="fa-solid fa-bolt"></i> Generator System</h2>
+                </div>
                 <div class="dashboard-grid">
                     <div class="glow-card">
                         <h3 style="font-size: 16px; margin-bottom: 15px; color:#60a5fa;"><i class="fa-solid fa-key"></i> Create Access Token</h3>
@@ -209,19 +179,21 @@
 
             <!-- ===== KEY MANAGER ===== -->
             <div id="manager" class="page-section">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 20px; gap: 15px;">
-                    <h2 class="section-title" style="margin:0;"><i class="fa-solid fa-table-list"></i> Key Manager</h2>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap; width: 100%; max-width: 700px;">
-                        <div style="display:flex; background:#18181b; border:1px solid #27272a; border-radius:8px; overflow:hidden;">
-                            <button class="filter-btn active" onclick="filterKeys('all')">All</button>
-                            <button class="filter-btn" onclick="filterKeys('vip')">VIP</button>
-                            <button class="filter-btn" onclick="filterKeys('normal')">PH</button>
-                            <button class="filter-btn" onclick="filterKeys('active')">Active</button>
-                            <button class="filter-btn" onclick="filterKeys('expired')">Expired</button>
-                        </div>
-                        <input type="text" id="searchInput" class="input-dark" placeholder="Search ID or Name..." style="margin:0; flex:1; padding: 10px 15px;">
-                        <button class="btn-outline" id="exportCsvBtn" style="width:auto;padding:0 15px;border-color:#34d399;color:#34d399;" title="Export CSV"><i class="fa-solid fa-download"></i></button>
-                        <button class="btn-danger" id="cleanExpiredBtn" style="border-radius:10px; padding: 0 15px; font-weight:bold; cursor:pointer; border:none; color:#fff;"><i class="fa-solid fa-broom"></i> Clean</button>
+                <div class="page-header">
+                    <h2 class="section-title"><i class="fa-solid fa-table-list"></i> Key Manager</h2>
+                </div>
+                <div class="manager-toolbar">
+                    <div class="filter-group">
+                        <button class="filter-btn active" onclick="filterKeys('all')">All</button>
+                        <button class="filter-btn" onclick="filterKeys('vip')">VIP</button>
+                        <button class="filter-btn" onclick="filterKeys('normal')">PH</button>
+                        <button class="filter-btn" onclick="filterKeys('active')">Active</button>
+                        <button class="filter-btn" onclick="filterKeys('expired')">Expired</button>
+                    </div>
+                    <input type="text" id="searchInput" class="input-dark" placeholder="Search ID or Name...">
+                    <div class="manager-actions">
+                        <button class="btn-outline" id="exportCsvBtn" style="width:auto;padding:10px 15px;border-color:#34d399;color:#34d399;" title="Export CSV"><i class="fa-solid fa-download"></i></button>
+                        <button class="btn-danger" id="cleanExpiredBtn" style="border-radius:10px; padding:10px 15px; font-weight:bold; cursor:pointer; border:none; color:#fff;"><i class="fa-solid fa-broom"></i> Clean</button>
                     </div>
                 </div>
                 <div class="bulk-actions" id="bulkActions">
@@ -241,7 +213,9 @@
 
             <!-- ===== ACTIVE DEVICES ===== -->
             <div id="appUsers" class="page-section">
-                <h2 class="section-title"><i class="fa-solid fa-users-viewfinder"></i> Active Devices</h2>
+                <div class="page-header">
+                    <h2 class="section-title"><i class="fa-solid fa-users-viewfinder"></i> Active Devices</h2>
+                </div>
                 <div class="table-wrapper">
                     <table>
                         <thead><tr><th>Device Hardware ID</th><th>Used Token</th><th>Status & Action</th></tr></thead>
@@ -252,7 +226,9 @@
 
             <!-- ===== FIREBASE HUB ===== -->
             <div id="firebaseHub" class="page-section">
-                <h2 class="section-title"><i class="fa-solid fa-server"></i> Firebase Hub</h2>
+                <div class="page-header">
+                    <h2 class="section-title"><i class="fa-solid fa-server"></i> Firebase Hub</h2>
+                </div>
                 <div class="dashboard-grid">
                     <div class="glow-card">
                         <h3 style="font-size: 16px; margin-bottom: 15px;"><i class="fa-solid fa-plus"></i> Add Mirror Database</h3>
@@ -284,7 +260,9 @@
 
             <!-- ===== SECURITY PANEL ===== -->
             <div id="security" class="page-section">
-                <h2 class="section-title"><i class="fa-solid fa-shield-halved"></i> Security Panel</h2>
+                <div class="page-header">
+                    <h2 class="section-title"><i class="fa-solid fa-shield-halved"></i> Security Panel</h2>
+                </div>
                 <div class="dashboard-grid">
                     <div class="glow-card">
                         <h3 style="font-size: 16px; margin-bottom: 15px; color:#ef4444;"><i class="fa-solid fa-ban"></i> Manual Ban</h3>
@@ -303,7 +281,9 @@
 
             <!-- ===== SETTINGS ===== -->
             <div id="settings" class="page-section">
-                <h2 class="section-title"><i class="fa-solid fa-gear"></i> System Settings</h2>
+                <div class="page-header">
+                    <h2 class="section-title"><i class="fa-solid fa-gear"></i> System Settings</h2>
+                </div>
                 <div class="dashboard-grid">
                     <div class="glow-card">
                         <h3 style="font-size: 16px; margin-bottom: 15px;"><i class="fa-solid fa-link"></i> Secret URLs</h3>
@@ -312,31 +292,31 @@
                         <span class="input-label">Admin Link Parameter (Optional By-pass / Auth Path)</span>
                         <input type="text" id="settingAdminParam" class="input-dark" placeholder="e.g. admin=true">
                         <button class="btn-outline" id="saveLinksBtn" style="margin-bottom: 15px;">Update Link Settings</button>
-                        <div style="background:rgba(0,0,0,0.4); padding:10px; border-radius:8px; font-size:12px; word-break:break-all; margin-bottom:10px;">
-                            <span style="color:#a1a1aa;">Admin Link:</span><br>
-                            <span id="adminLinkPreview" style="color:#6366f1; font-weight:bold;">Loading...</span>
+                        <div class="link-preview-box">
+                            <span class="link-label">Admin Link:</span><br>
+                            <span id="adminLinkPreview" class="link-url" style="color:#6366f1;">Loading...</span>
                         </div>
-                        <div style="background:rgba(0,0,0,0.4); padding:10px; border-radius:8px; font-size:12px; word-break:break-all;">
-                            <span style="color:#a1a1aa;">User Generator Link:</span><br>
-                            <span id="userLinkPreview" style="color:#f472b6; font-weight:bold;">Loading...</span>
+                        <div class="link-preview-box">
+                            <span class="link-label">User Generator Link:</span><br>
+                            <span id="userLinkPreview" class="link-url" style="color:#f472b6;">Loading...</span>
                         </div>
                     </div>
                     <div class="glow-card" style="height: fit-content;">
                         <h3 style="font-size: 16px; margin-bottom: 15px; color:#f472b6;"><i class="fa-solid fa-power-off"></i> Global App Controls</h3>
-                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #27272a; padding-bottom: 15px; margin-bottom: 15px;">
-                            <div>
-                                <h4 style="font-size:14px; font-weight:500;">Maintenance Mode</h4>
-                                <span style="font-size:12px; color:#a1a1aa;">Block all app logins</span>
+                        <div class="setting-toggle-row">
+                            <div class="setting-toggle-info">
+                                <h4>Maintenance Mode</h4>
+                                <span>Block all app logins</span>
                             </div>
                             <label class="switch">
                                 <input type="checkbox" id="maintModeToggle">
                                 <span class="slider round"></span>
                             </label>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #27272a; padding-bottom: 15px; margin-bottom: 15px;">
-                            <div>
-                                <h4 style="font-size:14px; font-weight:500;">Auto Cleanup</h4>
-                                <span style="font-size:12px; color:#a1a1aa;">Remove expired keys automatically</span>
+                        <div class="setting-toggle-row">
+                            <div class="setting-toggle-info">
+                                <h4>Auto Cleanup</h4>
+                                <span>Remove expired keys automatically</span>
                             </div>
                             <label class="switch">
                                 <input type="checkbox" id="autoCleanupToggle" checked>
@@ -423,22 +403,11 @@
         }
 
         window.hideStatusOverlay = function() {
-            const overlay = document.getElementById('statusOverlay');
-            if (overlay) {
-                document.getElementById('statusText').innerHTML = '<span class="status-ready">System Fully Synced</span>';
-                document.getElementById('statusSub').textContent = 'Multi-DB Engine Active';
-                setTimeout(() => {
-                    overlay.classList.add('hidden');
-                    setTimeout(() => { overlay.style.display = 'none'; }, 600);
-                }, 2000);
-            }
+            window.showToast?.("Firebase Connected — System Ready");
         };
 
-        window.updateStatus = function(text, sub) {
-            const st = document.getElementById('statusText');
-            const ss = document.getElementById('statusSub');
-            if (st) st.textContent = text;
-            if (ss) ss.textContent = sub || '';
+        window.updateStatus = function(text) {
+            window.showToast?.(text || "Loading...");
         };
 
         // Session Timer
@@ -450,7 +419,7 @@
                 sessionTime--;
                 const m = Math.floor(sessionTime / 60);
                 const s = sessionTime % 60;
-                timerEl.textContent = `Session: ${m}:${String(s).padStart(2, '0')}`;
+                timerEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
                 if (sessionTime <= 300) timerEl.style.color = '#ef4444';
             }, 1000);
         })();
@@ -458,11 +427,28 @@
         // Notifications
         window.toggleNotifications = function() {
             const dd = document.getElementById('notifDropdown');
+            const wasShown = dd.classList.contains('show');
             dd.classList.toggle('show');
+            let overlay = document.getElementById('notifOverlay');
+            if (!wasShown) {
+                window.markNotifsRead?.();
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.id = 'notifOverlay';
+                    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:999;';
+                    overlay.addEventListener('click', function() { window.toggleNotifications(); });
+                    document.body.appendChild(overlay);
+                }
+                overlay.style.display = 'block';
+            } else {
+                if (overlay) overlay.style.display = 'none';
+            }
         };
         document.addEventListener('click', function(e) {
             if (!e.target.closest('#notifBell')) {
                 document.getElementById('notifDropdown')?.classList.remove('show');
+                const ov = document.getElementById('notifOverlay');
+                if (ov) ov.style.display = 'none';
             }
         });
 

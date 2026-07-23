@@ -65,35 +65,94 @@ function formatDate(ts) {
     return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-// ===== NOTIFICATIONS =====
-function addNotification(text) {
-    notifCount++;
-    notifHistory.unshift({ text, time: new Date() });
-    if (notifHistory.length > 20) notifHistory.pop();
+// ===== NOTIFICATIONS (persisted to Firebase) =====
+const NOTIF_EMPTY_HTML = '<div class="notification-item" style="text-align:center;color:#52525b;">No notifications yet</div>';
+let lastReadTime = 0;
+
+function renderNotifUI() {
     const badge = document.getElementById('notifBadge');
     const dropdown = document.getElementById('notifDropdown');
+    const unread = notifHistory.filter(n => (n.time || 0) > lastReadTime);
     if (badge) {
-        badge.style.display = 'flex';
-        badge.textContent = notifCount > 99 ? '99+' : notifCount;
+        if (unread.length > 0) {
+            badge.style.display = 'flex';
+            badge.textContent = unread.length > 99 ? '99+' : unread.length;
+        } else {
+            badge.style.display = 'none';
+        }
     }
     if (dropdown) {
-        dropdown.innerHTML = notifHistory.map(n => 
-            `<div class="notification-item">${n.text}<div class="notif-time">${formatDate(n.time)}</div></div>`
-        ).join('');
+        if (notifHistory.length === 0) {
+            dropdown.innerHTML = NOTIF_EMPTY_HTML;
+        } else {
+            dropdown.innerHTML = notifHistory.map(n => {
+                const isUnread = (n.time || 0) > lastReadTime;
+                return `<div class="notification-item" style="${isUnread ? 'border-left:3px solid #6366f1;padding-left:12px;' : ''}">${n.text}<div class="notif-time">${formatDate(n.time)}</div></div>`;
+            }).join('') + '<div class="notification-item notif-clear-btn" style="text-align:center;color:#6366f1;cursor:pointer;font-weight:600;" onclick="window.clearNotifications()">Clear All</div>';
+        }
     }
 }
 
-// ===== ACTIVITY LOG =====
-async function logAdminActivity(action, key, undoDataObj, type) {
+async function addNotification(text) {
     if (!db) return;
     try {
-        await push(ref(db, 'AdminLogs'), {
-            action, key, type,
+        await push(ref(db, 'AdminNotifications'), { text, time: serverTimestamp() });
+    } catch (e) { console.error("notif save error:", e); }
+}
+
+window.markNotifsRead = async function() {
+    if (!db) return;
+    lastReadTime = Date.now();
+    renderNotifUI();
+    try { await set(ref(db, 'SystemSettings/lastNotifReadTime'), lastReadTime); } catch(e) {}
+};
+
+async function loadNotifications() {
+    if (!db) return;
+    try {
+        const snap = await get(ref(db, 'SystemSettings/lastNotifReadTime'));
+        if (snap.exists()) lastReadTime = snap.val() || 0;
+    } catch(e) {}
+    onValue(ref(db, 'AdminNotifications'), (snap) => {
+        notifHistory = [];
+        if (snap.exists()) {
+            const entries = [];
+            snap.forEach(c => { entries.push({ id: c.key, ...c.val() }); });
+            entries.reverse();
+            notifHistory = entries.slice(0, 20);
+        }
+        renderNotifUI();
+    });
+}
+
+window.clearNotifications = async function() {
+    if (!db) return;
+    try {
+        await remove(ref(db, 'AdminNotifications'));
+        notifHistory = [];
+        lastReadTime = 0;
+        renderNotifUI();
+        showToast("Notifications cleared!");
+    } catch (e) { showToast(e.message, true); }
+};
+
+// ===== ACTIVITY LOG =====
+async function logAdminActivity(action, key, undoDataObj, type) {
+    if (!db) { console.error("Log skipped: db is null"); return; }
+    try {
+        const logData = {
+            action: String(action || ''),
+            key: String(key || ''),
+            type: String(type || ''),
             undoData: JSON.stringify(undoDataObj || {}),
             time: serverTimestamp(),
             undone: false
-        });
-    } catch (e) { console.error("Log error:", e); }
+        };
+        await push(ref(db, 'AdminLogs'), logData);
+    } catch (e) {
+        console.error("LOG ERROR:", e);
+        showToast("Log failed: " + e.message, true);
+    }
 }
 
 // ===== UNDO ENGINE =====
@@ -163,27 +222,36 @@ window.filterAuditLogs = function() {
 
 function renderAuditLogs(logs) {
     const box = document.getElementById('activityLogBody');
-    if (!box) return;
+    if (!box) { console.error("activityLogBody NOT FOUND"); return; }
     
     let filtered = [...logs];
     const typeFilter = document.getElementById('auditTypeFilter')?.value;
-    const dateFrom = document.getElementById('auditDateFrom')?.value;
-    const dateTo = document.getElementById('auditDateTo')?.value;
     
     if (typeFilter && typeFilter !== 'all') {
         filtered = filtered.filter(l => l.data?.type === typeFilter);
     }
+    
+    // Date filter only if user explicitly set dates
+    const dateFrom = document.getElementById('auditDateFrom')?.value;
+    const dateTo = document.getElementById('auditDateTo')?.value;
     if (dateFrom) {
         const from = new Date(dateFrom).getTime();
-        filtered = filtered.filter(l => (l.data?.time || 0) >= from);
+        filtered = filtered.filter(l => {
+            const t = typeof l.data?.time === 'number' ? l.data.time : 0;
+            return t >= from;
+        });
     }
     if (dateTo) {
         const to = new Date(dateTo).setHours(23,59,59,999);
-        filtered = filtered.filter(l => (l.data?.time || 0) <= to);
+        filtered = filtered.filter(l => {
+            const t = typeof l.data?.time === 'number' ? l.data.time : 0;
+            return t <= to;
+        });
     }
     
     let htmlStr = '';
-    filtered.reverse().slice(0, 50).forEach(item => {
+    const displayLogs = filtered.slice().reverse().slice(0, 50);
+    displayLogs.forEach(item => {
         const log = item.data;
         if (!log) return;
         window.adminLogsCache[item.id] = log;
@@ -191,14 +259,14 @@ function renderAuditLogs(logs) {
             `<span style="color:#a1a1aa;font-style:italic;">(Undone)</span>` :
             `<button class="action-icon" style="padding:4px 8px;font-size:11px;" onclick="window.executeUndo('${item.id}')"><i class="fa-solid fa-rotate-left"></i> Undo</button>`;
         htmlStr += `<tr>
-            <td>${log.action || 'System Action'}</td>
+            <td>${log.action || 'System'}</td>
             <td style="font-family:monospace;color:#6366f1;">${log.key || '-'}</td>
             <td style="font-size:12px;color:#71717a;">${formatDate(log.time)}</td>
             <td>${undoBtn}</td>
         </tr>`;
     });
     
-    box.innerHTML = htmlStr || '<tr><td colspan="4" style="text-align:center;padding:20px;">No matching activity</td></tr>';
+    box.innerHTML = htmlStr || '<tr><td colspan="4" style="text-align:center;padding:20px;">No activity yet. Make a change to see logs here.</td></tr>';
 }
 
 // ===== CHART =====
@@ -235,43 +303,33 @@ function renderGraph(dailyData) {
     });
 }
 
-// ===== AUTO-SAVE DEFAULTS =====
-function autoSaveDefaultSettings() {
+// ===== SAVE DEFAULTS (Manual) =====
+async function saveDefaultSettings() {
     if (!db) return;
-    clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(async () => {
-        const val = parseInt(document.getElementById('customTimeVal').value);
-        const type = document.getElementById('customTimeType').value;
-        const tier = document.getElementById('keyTypeInput').value;
-        const lifetime = document.getElementById('lifetimeCheck').checked;
-        if (!val || val <= 0) return;
-        const hours = type === 'days' ? val * 24 : val;
-        const duration = lifetime ? 99999 : hours;
-        try {
-            const snap = await get(ref(db, 'SystemSettings'));
-            const oldDB = snap.exists() ? snap.val() : {};
-            const oldSet = {
-                defaultKeyDuration: oldDB.defaultKeyDuration ?? 24,
-                defaultKeyTier: oldDB.defaultKeyTier ?? 'normal',
-                defaultKeyLifetime: oldDB.defaultKeyLifetime ?? false
-            };
-            await update(ref(db, 'SystemSettings'), { defaultKeyDuration: duration, defaultKeyTier: tier, defaultKeyLifetime: lifetime });
-            await logAdminActivity("Auto-Saved Settings", `New Default - Tier: ${tier}, Duration: ${duration}h`, { oldSettings: oldSet }, "SETTINGS");
-            document.getElementById('saveDefaultDurationBtn').innerHTML = 'Saved!';
-            setTimeout(() => { document.getElementById('saveDefaultDurationBtn').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save as Default'; }, 1500);
-        } catch (e) { console.error("Auto-save error:", e); }
-    }, 500);
+    const val = parseInt(document.getElementById('customTimeVal').value);
+    const type = document.getElementById('customTimeType').value;
+    const tier = document.getElementById('keyTypeInput').value;
+    const lifetime = document.getElementById('lifetimeCheck').checked;
+    if (!val || val <= 0) return showToast("Invalid time value", true);
+    const hours = type === 'days' ? val * 24 : val;
+    const duration = lifetime ? 99999 : hours;
+    try {
+        const snap = await get(ref(db, 'SystemSettings'));
+        const oldDB = snap.exists() ? snap.val() : {};
+        const oldSet = {
+            defaultKeyDuration: oldDB.defaultKeyDuration ?? 24,
+            defaultKeyTier: oldDB.defaultKeyTier ?? 'normal',
+            defaultKeyLifetime: oldDB.defaultKeyLifetime ?? false
+        };
+        await update(ref(db, 'SystemSettings'), { defaultKeyDuration: duration, defaultKeyTier: tier, defaultKeyLifetime: lifetime });
+        await logAdminActivity("Saved Default Settings", `Tier: ${tier}, Duration: ${duration}h`, { oldSettings: oldSet }, "SETTINGS");
+        document.getElementById('saveDefaultDurationBtn').innerHTML = '<i class="fa-solid fa-check"></i> Saved!';
+        showToast("Default settings saved!");
+        setTimeout(() => { document.getElementById('saveDefaultDurationBtn').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save as Default'; }, 1500);
+    } catch (e) { showToast(e.message, true); }
 }
 
-function attachAutoSaveListeners() {
-    ['customTimeVal', 'customTimeType', 'keyTypeInput', 'lifetimeCheck'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.removeEventListener('change', autoSaveDefaultSettings);
-            el.addEventListener('change', autoSaveDefaultSettings);
-        }
-    });
-}
+document.getElementById('saveDefaultDurationBtn')?.addEventListener('click', saveDefaultSettings);
 
 // ===== KEY MANAGER (with Pagination + Bulk Selection) =====
 let selectedKeys = new Set();
@@ -332,6 +390,7 @@ window.bulkUnbind = async function() {
         if (item) await logAdminActivity("Unbound Device", key, { key, oldDevice: item.d.boundDeviceId }, "RESET_KEY");
     }
     showToast(`${selectedKeys.size} keys unbound!`);
+    addNotification(`${selectedKeys.size} keys bulk unbound from devices`);
     selectedKeys.clear();
     updateBulkUI();
 };
@@ -404,6 +463,22 @@ function renderUnifiedKeys() {
         const badge = item.k.includes('VIP') ? `<span class="badge badge-vip">VIP</span>` : `<span class="badge badge-normal">NORM</span>`;
         const note = item.d.note ? `<div style="color:#a1a1aa;font-size:11px;margin-top:5px;"><i class="fa-solid fa-tag"></i> ${item.d.note}</div>` : '';
 
+        let countdownHTML = '';
+        if (item.d.durationHours === 99999) {
+            countdownHTML = '<div style="color:#34d399;font-size:12px;font-weight:600;"><i class="fa-solid fa-infinity"></i> Lifetime</div>';
+        } else if (isEx) {
+            countdownHTML = '<div style="color:#ef4444;font-size:12px;font-weight:600;"><i class="fa-solid fa-skull-crossbones"></i> EXPIRED</div>';
+        } else {
+            const remaining = ex - now;
+            const hours = Math.floor(remaining / 3600000);
+            const mins = Math.floor((remaining % 3600000) / 60000);
+            const secs = Math.floor((remaining % 60000) / 1000);
+            let color = '#34d399';
+            if (hours < 1) color = '#ef4444';
+            else if (hours < 6) color = '#facc15';
+            countdownHTML = `<div class="key-countdown" data-ex="${ex}" style="color:${color};font-size:12px;font-weight:600;font-family:'Space Mono',monospace;"><i class="fa-solid fa-hourglass-half"></i> ${hours}h ${String(mins).padStart(2,'0')}m ${String(secs).padStart(2,'0')}s</div>`;
+        }
+
         tHTML += `<tr>
             <td><input type="checkbox" ${isChecked} onchange="if(this.checked)window._selectKey('${item.k}');else window._deselectKey('${item.k}')"></td>
             <td><div class="key-code">${item.k}</div>${badge} ${isEx ? '<span class="badge" style="background:#ef4444;color:#fff;">EXP</span>' : ''}${note}</td>
@@ -411,6 +486,7 @@ function renderUnifiedKeys() {
                 <div style="color:#e4e4e7;font-size:13px;"><i class="fa-solid fa-clock" style="color:#a1a1aa;"></i> ${item.d.durationHours === 99999 ? 'Lifetime' : item.d.durationHours + 'h'}</div>
                 <div style="color:#71717a;font-size:11px;">Cr: ${formatDate(cr)}</div>
                 <div style="color:#71717a;font-size:11px;">Ex: ${item.d.durationHours === 99999 ? 'Never' : formatDate(ex)}</div>
+                ${countdownHTML}
             </td>
             <td><div style="color:${isBd ? '#34d399' : '#71717a'};font-family:monospace;font-size:12px;">${isBd ? item.d.boundDeviceId : 'Unlinked'}</div></td>
             <td>
@@ -440,6 +516,35 @@ function renderUnifiedKeys() {
     renderPagination(totalPages);
     attachKeyActions();
     updateBulkUI();
+    startKeyCountdowns();
+}
+
+// ===== KEY COUNTDOWN TIMER =====
+let keyCountdownInterval = null;
+
+function startKeyCountdowns() {
+    if (keyCountdownInterval) clearInterval(keyCountdownInterval);
+    keyCountdownInterval = setInterval(() => {
+        document.querySelectorAll('.key-countdown').forEach(el => {
+            const ex = parseInt(el.dataset.ex);
+            if (!ex) return;
+            const now = Date.now();
+            const remaining = ex - now;
+            if (remaining <= 0) {
+                el.innerHTML = '<i class="fa-solid fa-skull-crossbones"></i> EXPIRED';
+                el.style.color = '#ef4444';
+                return;
+            }
+            const hours = Math.floor(remaining / 3600000);
+            const mins = Math.floor((remaining % 3600000) / 60000);
+            const secs = Math.floor((remaining % 60000) / 1000);
+            let color = '#34d399';
+            if (hours < 1) color = '#ef4444';
+            else if (hours < 6) color = '#facc15';
+            el.innerHTML = `<i class="fa-solid fa-hourglass-half"></i> ${hours}h ${String(mins).padStart(2,'0')}m ${String(secs).padStart(2,'0')}s`;
+            el.style.color = color;
+        });
+    }, 1000);
 }
 
 window._selectKey = function(k) { selectedKeys.add(k); updateBulkUI(); };
@@ -492,7 +597,7 @@ if (savedSearch) {
 function attachKeyActions() {
     document.querySelectorAll('.icon-copy').forEach(btn => { btn.onclick = function() { navigator.clipboard.writeText(this.dataset.key); showToast("Token Copied!"); }; });
     document.querySelectorAll('.icon-edit').forEach(btn => { btn.onclick = editHandler; });
-    document.querySelectorAll('.icon-del').forEach(btn => { btn.onclick = this.dataset.device ? banHandler : deleteHandler; });
+    document.querySelectorAll('.icon-del').forEach(btn => { btn.onclick = btn.dataset.device ? banHandler : deleteHandler; });
     document.querySelectorAll('.icon-reset').forEach(btn => { btn.onclick = resetHandler; });
 }
 
@@ -532,6 +637,7 @@ async function resetHandler() {
     globalSecondaryFirebases.forEach(fb => update(ref(fb.db, `ActiveUserKeys/${key}`), updates).catch(()=>{}));
     await logAdminActivity("Unbound Device", key, { key, oldDevice: item?.d.boundDeviceId }, "RESET_KEY");
     showToast("Device Unbound Globally!");
+    addNotification(`Key ${key} unbound from device`);
 }
 
 async function banHandler() {
@@ -556,6 +662,7 @@ function loadData() {
         if (data.cooldownHours) document.getElementById('settingCooldown').value = data.cooldownHours;
         if (data.maxKeysLimit) document.getElementById('settingMaxKeys').value = data.maxKeysLimit;
         if (data.maintenanceMode !== undefined) document.getElementById('maintModeToggle').checked = data.maintenanceMode;
+        if (data.autoCleanupEnabled !== undefined) document.getElementById('autoCleanupToggle').checked = data.autoCleanupEnabled;
         
         const adminParam = data.adminParam || 'admin=true';
         const userParam = data.userParam || 'secure=true';
@@ -592,17 +699,23 @@ function loadData() {
         if (data.defaultKeyTier) document.getElementById('keyTypeInput').value = data.defaultKeyTier;
     });
 
-    // Activity Log with filtering
-    onValue(ref(db, 'AdminLogs'), (snap) => {
+    // Activity Log with real-time listener + get() fallback
+    const logsRef = ref(db, 'AdminLogs');
+    function processLogsSnapshot(snap) {
         allAuditLogs = [];
         if (snap.exists()) {
-            snap.forEach(c => allAuditLogs.push({ id: c.key, data: c.val() }));
+            snap.forEach(c => {
+                allAuditLogs.push({ id: c.key, data: c.val() });
+            });
         }
         renderAuditLogs(allAuditLogs);
-    }, (error) => {
+    }
+    onValue(logsRef, processLogsSnapshot, (error) => {
+        console.error("AdminLogs onValue error:", error);
         const box = document.getElementById('activityLogBody');
         if(box) box.innerHTML = `<tr><td colspan="4" style="color:red;text-align:center;">Firebase Error: ${error.message}</td></tr>`;
     });
+    get(logsRef).then(snap => processLogsSnapshot(snap)).catch(e => console.error("AdminLogs get() fallback error:", e));
 
     onValue(ref(db, 'SystemStats'), (snap) => {
         const data = snap.exists() ? snap.val() : {};
@@ -614,6 +727,8 @@ function loadData() {
         allDbKeys['main'] = snap.exists() ? snap.val() : {};
         debouncedRenderKeys();
     });
+
+    loadNotifications();
 }
 
 // ===== FIREBASE HUB =====
@@ -863,12 +978,13 @@ document.getElementById('saveGlobalBtn')?.addEventListener('click', async functi
         const snap = await get(ref(db, 'SystemSettings'));
         const oldDB = snap.exists() ? snap.val() : {};
         const updates = {
-            maintenanceMode: document.getElementById('maintModeToggle').checked
+            maintenanceMode: document.getElementById('maintModeToggle').checked,
+            autoCleanupEnabled: document.getElementById('autoCleanupToggle').checked
         };
         await update(ref(db, 'SystemSettings'), updates);
-        await logAdminActivity("App Global Controls", `Maintenance: ${updates.maintenanceMode ? 'ON' : 'OFF'}`, { oldSettings: { maintenanceMode: oldDB.maintenanceMode ?? false } }, "SETTINGS");
+        await logAdminActivity("App Global Controls", `Maintenance: ${updates.maintenanceMode ? 'ON' : 'OFF'} | Auto Cleanup: ${updates.autoCleanupEnabled ? 'ON' : 'OFF'}`, { oldSettings: { maintenanceMode: oldDB.maintenanceMode ?? false, autoCleanupEnabled: oldDB.autoCleanupEnabled ?? true } }, "SETTINGS");
         showToast("Global States Saved!");
-        addNotification(`Maintenance mode ${updates.maintenanceMode ? 'ON' : 'OFF'}`);
+        addNotification(`Maintenance: ${updates.maintenanceMode ? 'ON' : 'OFF'} | Auto Cleanup: ${updates.autoCleanupEnabled ? 'ON' : 'OFF'}`);
     } catch (e) { showToast(e.message, true); }
 });
 
@@ -911,13 +1027,13 @@ window.refreshDashboard = function() {
 };
 
 // ===== INIT =====
+window.showToast?.("Connecting to Firebase...");
 onAuthStateChanged(auth, (user) => {
     if (user) {
         document.body.setAttribute('data-ready', 'true');
         loadData();
         loadFirebaseHub();
         startAutoCleanup();
-        setTimeout(() => { attachAutoSaveListeners(); }, 500);
         setTimeout(() => { window.hideStatusOverlay?.(); }, 1500);
     } else {
         sessionStorage.removeItem('admin_session');
