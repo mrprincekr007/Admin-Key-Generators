@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Master Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="admin-style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        #statusOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 99999; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); transition: opacity 0.6s ease; pointer-events: none; }
+        #statusOverlay.hidden { opacity: 0; pointer-events: none; }
+        #statusBox { background: rgba(24, 24, 27, 0.95); border: 1px solid #6366f1; border-radius: 16px; padding: 30px 50px; text-align: center; box-shadow: 0 0 60px rgba(99, 102, 241, 0.3); }
+        #statusBox .spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-radius: 50%; border-top-color: #6366f1; animation: spin 1s linear infinite; margin: 0 auto 15px auto; }
+        #statusBox .status-text { font-size: 18px; font-weight: 600; color: #e4e4e7; }
+        #statusBox .status-sub { font-size: 13px; color: #a1a1aa; margin-top: 5px; }
+        #statusBox .status-ready { color: #34d399; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="statusOverlay">
+        <div id="statusBox">
+            <div class="spinner"></div>
+            <div class="status-text" id="statusText">⏳ Connecting to Firebase...</div>
+            <div class="status-sub" id="statusSub">Authenticating admin session</div>
+        </div>
+    </div>
+
+    <div id="sidebarOverlay"></div>
+    <div id="toastNotice">Saved Successfully</div>
+
+    <div id="mainWrapper" style="display: flex; width: 100%; height: 100vh;">
+        
+        <div class="sidebar" id="sidebar">
+            <div class="logo-area">
+                <img src="logo.png" alt="PH Logo" style="width: 120px; border-radius: 10px; margin-bottom: 10px;" onerror="this.style.display='none';">
+            </div>
+            <ul class="nav-links">
+                <li><a href="#" class="active" id="nav-dashboard"><i class="fa-solid fa-chart-pie"></i> Dashboard</a></li>
+                <li><a href="#" id="nav-generator"><i class="fa-solid fa-bolt"></i> Generator & Rules</a></li>
+                <li><a href="#" id="nav-manager"><i class="fa-solid fa-table-list"></i> Key Manager</a></li>
+                <li><a href="#" id="nav-appUsers"><i class="fa-solid fa-users-viewfinder"></i> Active Devices</a></li>
+                <li><a href="#" id="nav-firebaseHub"><i class="fa-solid fa-server"></i> Firebase Hub</a></li>
+                <li><a href="#" id="nav-security"><i class="fa-solid fa-shield-halved"></i> Security Panel</a></li>
+                <li><a href="#" id="nav-settings"><i class="fa-solid fa-gear"></i> Settings</a></li>
+            </ul>
+        </div>
+
+        <div class="content-area" id="contentArea">
+            
+            <div class="topbar">
+                <button class="menu-toggle" id="menuToggleBtn"><i class="fa-solid fa-bars-staggered"></i></button>
+                <div style="flex:1;"></div> 
+                <div class="admin-profile">
+                    <img src="logo.png" alt="Admin" onerror="this.src='https://cdn-icons-png.flaticon.com/512/149/149071.png'">
+                    <span style="font-size: 14px; font-weight: 600;">Admin</span>
+                    <button onclick="window.logoutAdmin()" style="background:transparent; border:none; color:#ef4444; cursor:pointer; margin-left:10px;">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="dashboard" class="page-section active">
+                <h2 class="section-title"><i class="fa-solid fa-chart-line"></i> System Overview</h2>
+                <div class="stats-grid">
+                    <div class="glow-card stat-card" style="border-top: 3px solid #facc15;">
+                        <p class="input-label">All-Time Created Keys</p>
+                        <h3 id="lifetimeKeysCount" style="color: #facc15;">0</h3>
+                    </div>
+                    <div class="glow-card stat-card">
+                        <p class="input-label">Active / Live Keys</p>
+                        <h3 id="totalKeys" class="c-blue">0</h3>
+                    </div>
+                    <div class="glow-card stat-card">
+                        <p class="input-label">Connected Devices</p>
+                        <h3 id="usedKeys" class="c-green">0</h3>
+                    </div>
+                </div>
+                <div class="dashboard-grid">
+                    <div class="glow-card" style="grid-column: 1 / -1;">
+                        <h3 style="font-size: 16px; margin-bottom: 15px;"><i class="fa-solid fa-chart-area"></i> Last 30 Days Key Generations</h3>
+                        <div style="position: relative; height: 250px; width: 100%;">
+                            <canvas id="keysChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="dashboard-grid">
+                    <div class="glow-card" style="grid-column: 1 / -1;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3 style="font-size: 16px; margin:0;"><i class="fa-solid fa-clipboard-list"></i> Admin Activity Log</h3>
+                            <button class="btn-outline" onclick="window.clearActivityLog()" style="width: auto; padding: 5px 15px; font-size: 12px; border-radius: 50px;">Clear History</button>
+                        </div>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead><tr><th>Action</th><th>Details</th><th>Time</th><th>Action</th></tr></thead>
+                                <tbody id="activityLogBody">
+                                    <tr><td colspan="4" style="text-align: center; padding: 20px;">No recent activity</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="generator" class="page-section">
+                <h2 class="section-title"><i class="fa-solid fa-bolt"></i> Generator System</h2>
+                <div class="dashboard-grid">
+                    <div class="glow-card">
+                        <h3 style="font-size: 16px; margin-bottom: 15px; color:#60a5fa;"><i class="fa-solid fa-key"></i> Create Access Token</h3>
+                        <div class="form-grid">
+                            <div>
+                                <span class="input-label">Token Tier</span>
+                                <select id="keyTypeInput" class="input-dark" style="margin-bottom:0;">
+                                    <option value="normal">Standard (PH-)</option>
+                                    <option value="vip">Premium (VIP-)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <span class="input-label">Key Alias / Note (Optional)</span>
+                                <input type="text" id="keyNote" class="input-dark" placeholder="e.g. For Rohan">
+                            </div>
+                        </div>
+                        <div class="form-grid">
+                            <div>
+                                <span class="input-label">Time Value</span>
+                                <input type="number" id="customTimeVal" class="input-dark" value="24">
+                            </div>
+                            <div>
+                                <span class="input-label">Time Format</span>
+                                <select id="customTimeType" class="input-dark">
+                                    <option value="hours">Hours</option>
+                                    <option value="days">Days</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin: 15px 0 25px 0;">
+                            <div>
+                                <span style="font-size:14px; font-weight:500; color:#facc15;">Lifetime Access</span><br>
+                                <span style="font-size:11px; color:#a1a1aa;">Key will never expire</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="lifetimeCheck">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn-neon" id="generateBtn" style="flex:2;"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate & Sync</button>
+                            <button class="btn-outline" id="saveDefaultDurationBtn" style="flex:1; border-color:#facc15; color:#facc15;"><i class="fa-solid fa-floppy-disk"></i> Save as Default</button>
+                        </div>
+                        <div style="margin-top:10px; font-size:12px; color:#a1a1aa; text-align:center;">
+                            <i class="fa-solid fa-info-circle"></i> "Save as Default" sets this duration for user panel key generation
+                        </div>
+                    </div>
+                    <div class="glow-card">
+                        <h3 style="font-size: 16px; margin-bottom: 15px; color:#facc15;"><i class="fa-solid fa-sliders"></i> Website User Limits</h3>
+                        <span class="input-label">Cooldown Time (Hours)</span>
+                        <input type="number" id="settingCooldown" class="input-dark" placeholder="e.g. 24" value="24">
+                        <span class="input-label">Maximum Keys Limit</span>
+                        <input type="number" id="settingMaxKeys" class="input-dark" placeholder="e.g. 5" value="5">
+                        <button class="btn-outline" id="saveRulesBtn" style="border-color:#6366f1; color:#6366f1;">Save Rules to DB</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="manager" class="page-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 20px; gap: 15px;">
+                    <h2 class="section-title" style="margin:0;"><i class="fa-solid fa-table-list"></i> Key Manager</h2>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; width: 100%; max-width: 550px;">
+                        <div style="display:flex; background:#18181b; border:1px solid #27272a; border-radius:8px; overflow:hidden;">
+                            <button class="filter-btn active" onclick="filterKeys('all')">All</button>
+                            <button class="filter-btn" onclick="filterKeys('vip')">VIP</button>
+                            <button class="filter-btn" onclick="filterKeys('normal')">PH</button>
+                        </div>
+                        <input type="text" id="searchInput" class="input-dark" placeholder="Search ID or Name..." style="margin:0; flex:1; padding: 10px 15px;">
+                        <button class="btn-danger" id="cleanExpiredBtn" style="border-radius:10px; padding: 0 15px; font-weight:bold; cursor:pointer; border:none; color:#fff;"><i class="fa-solid fa-broom"></i> Clean</button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table id="keysTable">
+                        <thead><tr><th>Token & Identity</th><th>Lifespan Details</th><th>Device Bind</th><th>Manage Controls</th></tr></thead>
+                        <tbody id="tableBody"><tr><td colspan="4" style="text-align: center; padding:30px;"><i class="fa-solid fa-spinner fa-spin"></i> Syncing Unified Data...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="appUsers" class="page-section">
+                <h2 class="section-title"><i class="fa-solid fa-users-viewfinder"></i> Active Devices</h2>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Device Hardware ID</th><th>Used Token</th><th>Status & Action</th></tr></thead>
+                        <tbody id="usersBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="firebaseHub" class="page-section">
+                <h2 class="section-title"><i class="fa-solid fa-server"></i> Firebase Hub</h2>
+                <div class="dashboard-grid">
+                    <div class="glow-card">
+                        <h3 style="font-size: 16px; margin-bottom: 15px;"><i class="fa-solid fa-plus"></i> Add Mirror Database</h3>
+                        <div style="background: rgba(99, 102, 241, 0.1); padding: 15px; border-radius: 10px; border: 1px dashed rgba(99, 102, 241, 0.3); margin-bottom: 20px;">
+                            <span class="input-label" style="color:#818cf8;"><i class="fa-solid fa-bolt"></i> Auto-Fill Config Code</span>
+                            <textarea id="configPaste" class="input-dark" placeholder="Paste your entire firebaseConfig code here..." style="height: 80px; margin-bottom: 0; font-size:11px; font-family:monospace;"></textarea>
+                        </div>
+                        <div class="form-grid">
+                            <input type="text" id="fbName" class="input-dark" placeholder="Alias Name" style="margin:0;">
+                            <input type="text" id="fbApiKey" class="input-dark" placeholder="API Key" style="margin:0;">
+                        </div>
+                        <input type="text" id="fbDatabaseURL" class="input-dark" placeholder="Database URL">
+                        <div class="form-grid">
+                            <input type="text" id="fbAuthDomain" class="input-dark" placeholder="Auth Domain" style="margin:0;">
+                            <input type="text" id="fbProjectId" class="input-dark" placeholder="Project ID" style="margin:0;">
+                        </div>
+                        <input type="text" id="fbAppId" class="input-dark" placeholder="App ID">
+                        <button class="btn-neon" id="addFbBtn"><i class="fa-solid fa-link"></i> Connect Hub</button>
+                    </div>
+                    <div class="table-wrapper" style="height: fit-content;">
+                        <table>
+                            <thead><tr><th>Project Info</th><th>Endpoint URL</th><th>Action</th></tr></thead>
+                            <tbody id="fbTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="security" class="page-section">
+                <h2 class="section-title"><i class="fa-solid fa-shield-halved"></i> Security Panel</h2>
+                <div class="dashboard-grid">
+                    <div class="glow-card">
+                        <h3 style="font-size: 16px; margin-bottom: 15px; color:#ef4444;"><i class="fa-solid fa-ban"></i> Manual Ban</h3>
+                        <span class="input-label">Target Device ID</span>
+                        <input type="text" id="banInput" class="input-dark" placeholder="Enter ID to block...">
+                        <button class="btn-danger" id="manualBanBtn" style="padding:12px; border-radius:10px; border:none; font-weight:bold; color:#fff; cursor:pointer; width:100%;"><i class="fa-solid fa-gavel"></i> Ban Device</button>
+                    </div>
+                    <div class="table-wrapper" style="height: fit-content;">
+                        <table>
+                            <thead><tr><th>Banned Device ID</th><th>Control</th></tr></thead>
+                            <tbody id="bannedBody"><tr><td colspan="2" style="text-align:center; color:#a1a1aa;">No banned devices</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="settings" class="page-section">
+                <h2 class="section-title"><i class="fa-solid fa-gear"></i> System Settings</h2>
+                <div class="dashboard-grid">
+                    <div class="glow-card">
+                        <h3 style="font-size: 16px; margin-bottom: 15px;"><i class="fa-solid fa-link"></i> Secret URLs</h3>
+                        <span class="input-label">User Link Parameter (Generator Page)</span>
+                        <input type="text" id="settingUserParam" class="input-dark" placeholder="e.g. secure=true">
+                        
+                        <!-- YAHAN SE 'disabled' AUR 'opacity' HATA DIYA GAYA HAI -->
+                        <span class="input-label">Admin Link Parameter (Optional By-pass / Auth Path)</span>
+                        <input type="text" id="settingAdminParam" class="input-dark" placeholder="e.g. admin=true">
+                        
+                        <button class="btn-outline" id="saveLinksBtn" style="margin-bottom: 15px;">Update Link Settings</button>
+                        <div style="background:rgba(0,0,0,0.4); padding:10px; border-radius:8px; font-size:12px; word-break:break-all; margin-bottom:10px;">
+                            <span style="color:#a1a1aa;">Admin Link:</span><br>
+                            <span id="adminLinkPreview" style="color:#6366f1; font-weight:bold;">Login page</span>
+                        </div>
+                        <div style="background:rgba(0,0,0,0.4); padding:10px; border-radius:8px; font-size:12px; word-break:break-all;">
+                            <span style="color:#a1a1aa;">User Generator Link:</span><br>
+                            <span id="userLinkPreview" style="color:#f472b6; font-weight:bold;">Loading...</span>
+                        </div>
+                    </div>
+                    <div class="glow-card" style="height: fit-content;">
+                        <h3 style="font-size: 16px; margin-bottom: 15px; color:#f472b6;"><i class="fa-solid fa-power-off"></i> Global App Controls</h3>
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #27272a; padding-bottom: 15px; margin-bottom: 15px;">
+                            <div>
+                                <h4 style="font-size:14px; font-weight:500;">Maintenance Mode</h4>
+                                <span style="font-size:12px; color:#a1a1aa;">Block all app logins</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="maintModeToggle">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        <button class="btn-outline" id="saveGlobalBtn">Save States</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            const menuBtn = document.getElementById('menuToggleBtn');
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (menuBtn && sidebar && overlay) {
+                function toggleSidebar(e) {
+                    e.stopPropagation();
+                    sidebar.classList.toggle('mobile-open');
+                    overlay.classList.toggle('active');
+                }
+                function closeSidebar() {
+                    sidebar.classList.remove('mobile-open');
+                    overlay.classList.remove('active');
+                }
+                menuBtn.addEventListener('click', toggleSidebar);
+                overlay.addEventListener('click', closeSidebar);
+                window.addEventListener('resize', function() {
+                    if (window.innerWidth > 900) closeSidebar();
+                });
+            }
+        })();
+
+        (function() {
+            const navMap = {
+                'nav-dashboard': 'dashboard',
+                'nav-generator': 'generator',
+                'nav-manager': 'manager',
+                'nav-appUsers': 'appUsers',
+                'nav-firebaseHub': 'firebaseHub',
+                'nav-security': 'security',
+                'nav-settings': 'settings'
+            };
+            window.switchPageInline = function(pageId, element) {
+                document.querySelectorAll('.page-section').forEach(p => p.classList.remove('active'));
+                const target = document.getElementById(pageId);
+                if (target) target.classList.add('active');
+                document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active'));
+                if (element) element.classList.add('active');
+                if (window.innerWidth <= 900) {
+                    const sidebar = document.getElementById('sidebar');
+                    const overlay = document.getElementById('sidebarOverlay');
+                    if (sidebar) sidebar.classList.remove('mobile-open');
+                    if (overlay) overlay.classList.remove('active');
+                }
+            };
+            Object.keys(navMap).forEach(navId => {
+                const link = document.getElementById(navId);
+                if (link) {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        window.switchPageInline(navMap[navId], this);
+                    });
+                }
+            });
+        })();
+
+        function filterKeys(type) {
+            const btns = document.querySelectorAll('.filter-btn');
+            btns.forEach(btn => btn.classList.remove('active'));
+            if (event && event.target) event.target.classList.add('active');
+            const trs = document.getElementById('tableBody').getElementsByTagName("tr");
+            for (let i = 0; i < trs.length; i++) {
+                let text = trs[i].textContent || trs[i].innerText;
+                if (type === 'all') trs[i].style.display = "";
+                else if (type === 'vip') trs[i].style.display = text.includes('VIP-') ? "" : "none";
+                else if (type === 'normal') trs[i].style.display = text.includes('PH-') ? "" : "none";
+            }
+        }
+
+        window.hideStatusOverlay = function() {
+            const overlay = document.getElementById('statusOverlay');
+            const statusText = document.getElementById('statusText');
+            const statusSub = document.getElementById('statusSub');
+            if (overlay) {
+                statusText.innerHTML = '✅ <span class="status-ready">System Fully Synced</span>';
+                statusSub.textContent = 'Multi-DB Engine Active';
+                setTimeout(() => {
+                    overlay.classList.add('hidden');
+                    setTimeout(() => { overlay.style.display = 'none'; }, 600);
+                }, 2000);
+            }
+        };
+
+        window.updateStatus = function(text, sub) {
+            const statusText = document.getElementById('statusText');
+            const statusSub = document.getElementById('statusSub');
+            if (statusText) statusText.textContent = text;
+            if (statusSub) statusSub.textContent = sub || '';
+        };
+    </script>
+
+    <script type="module" src="admin-script.js"></script>
+</body>
+</html>
