@@ -1,1 +1,32 @@
-
+{
+  "rules": {
+    "SystemSettings": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "ConnectedFirebases": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "ActiveUserKeys": {
+      ".read": true,
+      ".write": true
+    },
+    "SystemStats": {
+      ".read": true,
+      ".write": true
+    },
+    "AdminLogs": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "AdminNotifications": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "BannedDevices": {
+      ".read": true,
+      ".write": "auth != null"
+    }
+  }
+}

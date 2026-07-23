@@ -1,0 +1,397 @@
+{
+  "project": "Key Generator System",
+  "version": "3.0",
+  "description": "Multi-DB Key Generator system with Admin Panel, User Panel, and Mobile App integration. Keys are generated via web panels and consumed by a mobile app for device-based access control.",
+
+  "architecture": {
+    "overview": "3-tier system: User Panel (web) generates keys → Admin Panel (web) manages everything → Mobile App (Android) consumes keys with device binding",
+    "panels": {
+      "user_panel": {
+        "description": "Public-facing key generator page. Users access via secret URL parameter.",
+        "access": "URL query parameter (default: ?secure=true). No login/password.",
+        "features": ["Auto key generation on access", "Key dashboard with live status", "Cooldown timer between generations", "Copy & share keys", "Offline detection"],
+        "file": "Key-Generators/Key-Generators-main/index.html"
+      },
+      "admin_panel": {
+        "description": "Full management dashboard for admin. Firebase Auth required.",
+        "access": "URL query parameter (default: ?admin=true) → login page with email/password",
+        "features": [
+          "Dashboard with stats & charts",
+          "Key generation with custom duration/tier",
+          "Key manager (edit, delete, unbind, ban)",
+          "Bulk operations (bulk delete, bulk unbind)",
+          "Firebase Hub (multi-DB mirror management)",
+          "Security panel (manual device ban)",
+          "System settings (cooldown, limits, maintenance mode)",
+          "Admin Activity Log with undo",
+          "Notification system (persisted to Firebase)",
+          "Session timer (30 min auto-logout)",
+          "CSV export",
+          "Keyboard shortcuts (1-7 for pages, R for refresh)"
+        ],
+        "file": "Admin-Key-Generators/Admin-Key-Generators-main/admin.html"
+      },
+      "mobile_app": {
+        "description": "Android app that verifies keys and binds them to devices. NOT part of this codebase — built separately.",
+        "responsibilities": [
+          "User enters key in app",
+          "App reads key from Firebase ActiveUserKeys",
+          "App reads device ID (hardware fingerprint)",
+          "If key exists and device matches or is unbound → grant access",
+          "If key is expired → reject",
+          "If device is banned → reject",
+          "First login: set boundDeviceId = device's hardware ID, isUsed = true",
+          "Subsequent logins: verify boundDeviceId matches current device"
+        ]
+      }
+    }
+  },
+
+  "firebase": {
+    "project_id": "key-generator-c29a4",
+    "database_url": "https://key-generator-c29a4-default-rtdb.firebaseio.com",
+    "database_type": "Realtime Database (RTDB)",
+    "config_file": "firebase-config.js",
+
+    "data_structure": {
+      "ActiveUserKeys": {
+        "description": "All generated keys stored here. Both panels and mobile app read/write this.",
+        "path": "ActiveUserKeys/<KEY_STRING>/",
+        "example_key": "PH-A3X9K2",
+        "example_vip_key": "VIP-B7M1P4",
+        "fields": {
+          "createdAt": {
+            "type": "serverTimestamp (number after resolved)",
+            "description": "Server-side creation timestamp in milliseconds"
+          },
+          "durationHours": {
+            "type": "number",
+            "description": "Key validity in hours. 99999 = lifetime (never expires)",
+            "examples": [1, 24, 168, 99999]
+          },
+          "isUsed": {
+            "type": "boolean",
+            "description": "false = never used. true = bound to a device. Set by mobile app on first login.",
+            "default": false
+          },
+          "boundDeviceId": {
+            "type": "string",
+            "description": "Device hardware ID that this key is locked to. 'NONE' = unbound.",
+            "default": "NONE",
+            "example": "a1b2c3d4e5f6"
+          },
+          "type": {
+            "type": "string",
+            "description": "Key tier: 'Normal' or 'VIP'",
+            "enum": ["Normal", "VIP"]
+          },
+          "note": {
+            "type": "string (optional)",
+            "description": "Admin or user alias for the key",
+            "example": "For Rohan"
+          }
+        },
+        "read_rules": "public (auth not required)",
+        "write_rules": "public (auth not required) — user panel has no auth"
+      },
+
+      "SystemSettings": {
+        "description": "Global configuration for the entire system",
+        "path": "SystemSettings/",
+        "fields": {
+          "cooldownHours": {
+            "type": "number",
+            "default": 24,
+            "description": "Hours before a user can generate new keys after hitting the limit"
+          },
+          "maxKeysLimit": {
+            "type": "number",
+            "default": 5,
+            "description": "Maximum keys a single user can generate within cooldown window"
+          },
+          "maintenanceMode": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, non-admin users see maintenance screen. Admins bypass this."
+          },
+          "userParam": {
+            "type": "string",
+            "default": "secure=true",
+            "description": "URL query parameter for user panel access"
+          },
+          "adminParam": {
+            "type": "string",
+            "default": "admin=true",
+            "description": "URL query parameter for admin panel access"
+          },
+          "defaultKeyDuration": {
+            "type": "number",
+            "default": 24,
+            "description": "Default key validity in hours when generated from admin panel"
+          },
+          "defaultKeyTier": {
+            "type": "string",
+            "default": "normal",
+            "enum": ["normal", "vip"],
+            "description": "Default key tier for admin panel generation"
+          },
+          "defaultKeyLifetime": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, admin-generated keys get duration 99999 (lifetime)"
+          },
+          "lastNotifReadTime": {
+            "type": "number",
+            "description": "Timestamp of last notification read by admin (for badge count)"
+          }
+        },
+        "read_rules": "public",
+        "write_rules": "auth != null (admin only)"
+      },
+
+      "SystemStats": {
+        "description": "Lifetime statistics and daily generation counts",
+        "path": "SystemStats/",
+        "fields": {
+          "totalLifetimeGenerated": {
+            "type": "number",
+            "description": "Total keys ever generated (lifetime counter)"
+          },
+          "DailyGenerations": {
+            "type": "object",
+            "path": "SystemStats/DailyGenerations/",
+            "description": "Key-value pairs where key is YYYY-MM-DD and value is count",
+            "example": {
+              "2026-07-24": 15,
+              "2026-07-23": 22
+            }
+          }
+        },
+        "read_rules": "public",
+        "write_rules": "public (both panels update stats)"
+      },
+
+      "ConnectedFirebases": {
+        "description": "Mirror/external Firebase databases for multi-DB sync",
+        "path": "ConnectedFirebases/<FB_ID>/",
+        "fields": {
+          "projectName": { "type": "string", "description": "Display name/alias" },
+          "apiKey": { "type": "string" },
+          "authDomain": { "type": "string" },
+          "databaseURL": { "type": "string", "description": "RTDB URL of mirror" },
+          "projectId": { "type": "string" },
+          "appId": { "type": "string" }
+        },
+        "read_rules": "public",
+        "write_rules": "auth != null (admin only)"
+      },
+
+      "BannedDevices": {
+        "description": "List of banned device IDs. Mobile app checks this before granting access.",
+        "path": "BannedDevices/<DEVICE_ID>/",
+        "fields": {
+          "date": { "type": "serverTimestamp", "description": "When the device was banned" }
+        },
+        "read_rules": "public (mobile app needs to check before access)",
+        "write_rules": "auth != null (admin only)"
+      },
+
+      "AdminLogs": {
+        "description": "Audit log of all admin actions with undo capability",
+        "path": "AdminLogs/<AUTO_ID>/",
+        "fields": {
+          "action": { "type": "string", "description": "Human-readable action description" },
+          "key": { "type": "string", "description": "Related key or device ID" },
+          "type": {
+            "type": "string",
+            "enum": ["CREATE_KEY", "DELETE_KEY", "EDIT_KEY", "RESET_KEY", "BAN_DEVICE", "SETTINGS", "UNDO", "CLEANUP", "ADD_DB", "REMOVE_DB"],
+            "description": "Action type for filtering and undo logic"
+          },
+          "undoData": { "type": "JSON string", "description": "Data needed to reverse this action" },
+          "time": { "type": "serverTimestamp" },
+          "undone": { "type": "boolean", "description": "true if this action was undone" }
+        },
+        "read_rules": "auth != null",
+        "write_rules": "auth != null"
+      },
+
+      "AdminNotifications": {
+        "description": "Persisted notification feed for admin panel",
+        "path": "AdminNotifications/<AUTO_ID>/",
+        "fields": {
+          "text": { "type": "string", "description": "Notification message" },
+          "time": { "type": "serverTimestamp" }
+        },
+        "read_rules": "auth != null",
+        "write_rules": "auth != null"
+      }
+    },
+
+    "multi_db_sync": {
+      "description": "When admin generates a key, it is written to ALL connected mirror databases AND the main DB. User panel reads from mirror DBs. This ensures redundancy.",
+      "write_order": "Mirror DBs first, then main DB",
+      "read_behavior": "All DBs merged into unified view. Device binding from any DB is respected."
+    }
+  },
+
+  "key_lifecycle": {
+    "generation": {
+      "admin_panel": "Admin chooses tier (Normal/VIP), duration, optional note → clicks Generate & Sync → key created on all DBs",
+      "user_panel": "User opens page with correct URL param → key auto-generated with default settings from SystemSettings",
+      "key_format": "PREFIX-XXXXXX where PREFIX is 'PH' (normal) or 'VIP', and XXXXXX is random alphanumeric (A-Z, 0-9)"
+    },
+    "active_usage": {
+      "step_1": "User enters key in mobile app",
+      "step_2": "App reads ActiveUserKeys/<KEY> from Firebase",
+      "step_3": "If key does not exist → 'Invalid Key' error",
+      "step_4": "If key exists, check BannedDevices for boundDeviceId → if banned → 'Access Denied'",
+      "step_5": "If key.isUsed == false (first time) → grant access, set boundDeviceId = device hardware ID, isUsed = true",
+      "step_6": "If key.isUsed == true AND boundDeviceId == current device → grant access",
+      "step_7": "If key.isUsed == true AND boundDeviceId != current device → 'Key bound to another device' error",
+      "step_8": "If current time > createdAt + (durationHours * 3600000) → key expired, reject"
+    },
+    "expiration": {
+      "auto_cleanup": "Admin panel has auto-cleanup that removes expired keys from all DBs",
+      "user_panel_cleanup": "User panel removes expired keys from its local view after 2 seconds"
+    },
+    "admin_operations": {
+      "edit": "Change duration of any key (applied to all DBs)",
+      "delete": "Remove key from all DBs permanently",
+      "unbind": "Reset boundDeviceId to 'NONE' and isUsed to false — key can be used on a new device",
+      "ban": "Add device to BannedDevices + delete the key",
+      "undo": "Reverse any of the above operations using stored undoData"
+    }
+  },
+
+  "authentication": {
+    "user_panel": {
+      "method": "No authentication. Access via secret URL parameter only.",
+      "bypass": "Admin URL param (e.g. ?admin=true) bypasses cooldown limits",
+      "security": "URL is cleaned from address bar after access (history.replaceState)"
+    },
+    "admin_panel": {
+      "method": "Firebase Authentication (Email/Password)",
+      "login_flow": [
+        "1. User opens admin panel with ?admin=true",
+        "2. Redirected to index.html (login page)",
+        "3. Enters email + password",
+        "4. Firebase Auth validates credentials",
+        "5. On success: redirect to admin.html",
+        "6. onAuthStateChanged listener checks auth state",
+        "7. If not authenticated → redirect back to login",
+        "8. Session stored in sessionStorage (30 min timer)"
+      ],
+      "session_management": {
+        "storage": "sessionStorage key: 'admin_session'",
+        "timer": "30 minute countdown displayed in topbar",
+        "auto_logout": "Redirect to login page when timer expires (client-side, not enforced server-side)"
+      },
+      "rate_limiting": "Login page has attempt counter. After 5 failed attempts, 30 second cooldown."
+    },
+    "mobile_app": {
+      "method": "No Firebase Auth. Device binding IS the authentication.",
+      "trust_model": "Anyone with a valid key can use it. Security comes from 1-key-1-device binding."
+    }
+  },
+
+  "device_binding": {
+    "description": "Each key can only be used on one device. First device to use the key gets it locked.",
+    "fields": {
+      "boundDeviceId": "Hardware ID of the device using this key. 'NONE' if unbound.",
+      "isUsed": "boolean. true = bound to a device."
+    },
+    "flow": {
+      "first_use": "App sets boundDeviceId = device_hardware_id, isUsed = true",
+      "subsequent_uses": "App checks if boundDeviceId matches current device_hardware_id",
+      "mismatch": "If boundDeviceId != current device → reject with 'Key bound to another device'",
+      "admin_unbind": "Admin can reset boundDeviceId to 'NONE' — key becomes free to use on any device"
+    },
+    "ban_flow": {
+      "admin_bans_device": "1. Add device to BannedDevices path, 2. Delete the key from ActiveUserKeys",
+      "app_check": "App reads BannedDevices/<device_id>. If exists → reject access.",
+      "unban": "Admin can undo ban (restores key + removes from BannedDevices)"
+    }
+  },
+
+  "cooldown_system": {
+    "description": "Prevents abuse by limiting key generation frequency",
+    "storage": "localStorage key: 'ph_gen_timestamps' — array of Date.now() timestamps",
+    "logic": [
+      "1. On key generation, push current timestamp to array",
+      "2. If array length >= maxKeysLimit → block generation, show cooldown timer",
+      "3. Cooldown duration = cooldownHours from SystemSettings",
+      "4. When oldest timestamp is older than cooldown → clear array, allow generation",
+      "5. Admin users bypass cooldown entirely"
+    ],
+    "display": "Countdown timer shows hours:minutes:seconds remaining"
+  },
+
+  "ui_features": {
+    "admin_panel": {
+      "sidebar_navigation": "7 pages: Dashboard, Generator, Key Manager, Active Devices, Firebase Hub, Security, Settings",
+      "keyboard_shortcuts": {
+        "1-7": "Switch to page number",
+        "R": "Refresh dashboard"
+      },
+      "notifications": "Real-time notification bell with unread count, persisted to Firebase",
+      "activity_log": "Every admin action logged with undo capability",
+      "theme": "Dark mode (default, only option)",
+      "responsive": "3 breakpoints: Tablet (<=900px), Mobile (<=600px), Small Mobile (<=400px)"
+    },
+    "user_panel": {
+      "theme_toggle": "Light/Dark mode switch",
+      "key_dashboard": "Shows generated keys with live status (Unused/Active/Expired)",
+      "copy_share": "One-tap copy and native share",
+      "offline_detection": "Shows warning when offline"
+    }
+  },
+
+  "mobile_app_integration_guide": {
+    "description": "Instructions for building the mobile app that consumes these keys",
+    "firebase_setup": {
+      "step_1": "Use the SAME firebase-config.js values (apiKey, databaseURL, projectId, etc.)",
+      "step_2": "Initialize Firebase Realtime Database",
+      "step_3": "No Firebase Auth needed — read ActiveUserKeys directly (rules allow public read)"
+    },
+    "key_verification_algorithm": {
+      "pseudocode": "FUNCTION verifyKey(inputKey, deviceId):\n  keyRef = GET ActiveUserKeys/{inputKey}\n  \n  IF keyRef NOT EXISTS:\n    RETURN 'Invalid Key'\n  \n  keyData = keyRef.value\n  \n  // Check if banned\n  banRef = GET BannedDevices/{deviceId}\n  IF banRef EXISTS:\n    RETURN 'Device Banned'\n  \n  // Check expiry\n  currentTime = NOW\n  expiryTime = keyData.createdAt + (keyData.durationHours * 3600000)\n  IF keyData.durationHours != 99999 AND currentTime > expiryTime:\n    DELETE ActiveUserKeys/{inputKey}  // cleanup\n    RETURN 'Key Expired'\n  \n  // Check device binding\n  IF keyData.isUsed == false:\n    // First use — bind device\n    UPDATE ActiveUserKeys/{inputKey}:\n      boundDeviceId = deviceId\n      isUsed = true\n    RETURN 'Access Granted (New Device)'\n  \n  IF keyData.boundDeviceId == deviceId:\n    RETURN 'Access Granted'\n  \n  ELSE:\n    RETURN 'Key Bound to Another Device'"
+    },
+    "required_firebase_paths": [
+      "ActiveUserKeys/<KEY>/ — READ + WRITE (for binding)",
+      "BannedDevices/<DEVICE_ID>/ — READ only"
+    ],
+    "device_id_requirements": {
+      "description": "Must be a unique, persistent hardware identifier",
+      "recommended": "Android Settings.Secure.ANDROID_ID or a combination of hardware serial + brand",
+      "must_be": "Consistent across app reinstalls, non-changeable by user"
+    }
+  },
+
+  "firebase_rules_summary": {
+    "ActiveUserKeys": { "read": true, "write": true },
+    "SystemSettings": { "read": true, "write": "auth != null" },
+    "SystemStats": { "read": true, "write": true },
+    "ConnectedFirebases": { "read": true, "write": "auth != null" },
+    "BannedDevices": { "read": true, "write": "auth != null" },
+    "AdminLogs": { "read": "auth != null", "write": "auth != null" },
+    "AdminNotifications": { "read": "auth != null", "write": "auth != null" }
+  },
+
+  "file_structure": {
+    "Admin-Key-Generators/Admin-Key-Generators-main/": {
+      "index.html": "Login page (Firebase Auth email/password)",
+      "admin.html": "Main admin dashboard (7 pages)",
+      "admin-script.js": "All admin logic (key mgmt, settings, notifications, multi-DB)",
+      "admin-style.css": "Admin panel styles with responsive design + animations",
+      "firebase-config.js": "Firebase config + auth export",
+      "firebase.json": "RTDB rules with comments (reference)",
+      "firebase-rules.json": "Clean RTDB rules for Firebase Console paste"
+    },
+    "Key-Generators/Key-Generators-main/": {
+      "index.html": "User-facing key generator page",
+      "script.js": "Key generation, cooldown, dashboard, live sync",
+      "style.css": "User panel styles with theme toggle",
+      "firebase-config.js": "Firebase config (same as admin)"
+    }
+  }
+}
