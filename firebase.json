@@ -1,0 +1,47 @@
+{
+  "rules": {
+
+    "SystemSettings": {
+      ".read": true,
+      // Sab log settings padh sakte hain (cooldown, limits, maintenance mode)
+      ".write": "auth != null"
+      // Sirf logged-in admin settings change kar sakta hai
+    },
+
+    "ConnectedFirebases": {
+      ".read": true,
+      // User panel ko bhi pata hona chahiye kaunsi mirror DBs connected hain
+      ".write": "auth != null"
+      // Sirf admin naya mirror DB connect ya disconnect kar sakta hai
+    },
+
+    "ActiveUserKeys": {
+      ".read": true,
+      // Dono panels (user + admin) keys padhte hain
+      ".write": true
+      // Dono panels keys likh sakte hain (user panel mein auth nahi hai isliye public)
+    },
+
+    "SystemStats": {
+      ".read": true,
+      // Dashboard pe stats dikhane ke liye sabko read chahiye
+      ".write": true
+      // User panel bhi stats update karta hai (key generate hone pe +1)
+    },
+
+    "AdminLogs": {
+      ".read": "auth != null",
+      // Sirf admin activity log dekh sakta hai (privacy)
+      ".write": "auth != null"
+      // Sirf admin log create ya undo kar sakta hai
+    },
+
+    "BannedDevices": {
+      ".read": true,
+      // User panel ko bhi check karna padta hai device banned hai ya nahi
+      ".write": "auth != null"
+      // Sirf admin kisi device ko ban kar sakta hai
+    }
+
+  }
+}
