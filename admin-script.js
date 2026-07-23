@@ -755,7 +755,8 @@ document.getElementById('generateBtn')?.addEventListener('click', async function
     }
     
     const newKey = (isVip ? 'VIP-' : 'PH-') + randomStr();
-    const kData = { createdAt: serverTimestamp(), durationHours: dur, isUsed: false, boundDeviceId: "NONE", type: isVip ? "VIP" : "Normal", note: note || undefined };
+    const kData = { createdAt: serverTimestamp(), durationHours: dur, isUsed: false, boundDeviceId: "NONE", type: isVip ? "VIP" : "Normal" };
+    if (note) kData.note = note;
 
     try {
         btn.disabled = true;
