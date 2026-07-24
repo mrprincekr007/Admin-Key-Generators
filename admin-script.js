@@ -8,6 +8,7 @@ let db = mainDb;
 let globalKeysData = [];
 let globalSecondaryFirebases = [];
 let keysChartInstance = null;
+let globalCustomKeyPaths = [];
 
 // ===== CUSTOM SELECT HANDLER =====
 window._selectCS = function(el) {
@@ -47,6 +48,43 @@ let cleanupInterval = null;
 let saveTimeout = null;
 let allDbKeys = {}; 
 let activeMirrorListeners = {}; 
+
+// ===== HELPER: Remove key from ALL paths (ActiveUserKeys + custom) =====
+function removeAllKeyPaths(key) {
+    const allDbs = [db, ...globalSecondaryFirebases.map(f => f.db)];
+    allDbs.forEach(targetDb => {
+        remove(ref(targetDb, 'ActiveUserKeys/' + key)).catch(()=>{});
+    });
+    for (const customPath of globalCustomKeyPaths) {
+        allDbs.forEach(targetDb => {
+            remove(ref(targetDb, customPath + '/' + key)).catch(()=>{});
+        });
+    }
+}
+
+function setAllKeyPaths(key, data) {
+    const allDbs = [db, ...globalSecondaryFirebases.map(f => f.db)];
+    allDbs.forEach(targetDb => {
+        set(ref(targetDb, 'ActiveUserKeys/' + key), data).catch(()=>{});
+    });
+    for (const customPath of globalCustomKeyPaths) {
+        allDbs.forEach(targetDb => {
+            set(ref(targetDb, customPath + '/' + key), data).catch(()=>{});
+        });
+    }
+}
+
+function updateAllKeyPaths(key, updates) {
+    const allDbs = [db, ...globalSecondaryFirebases.map(f => f.db)];
+    allDbs.forEach(targetDb => {
+        update(ref(targetDb, 'ActiveUserKeys/' + key), updates).catch(()=>{});
+    });
+    for (const customPath of globalCustomKeyPaths) {
+        allDbs.forEach(targetDb => {
+            update(ref(targetDb, customPath + '/' + key), updates).catch(()=>{});
+        });
+    }
+}
 
 // ===== PAGINATION =====
 let currentPage = 1;
@@ -204,28 +242,23 @@ window.executeUndo = async function(logId) {
         const undoData = typeof undoDataStr === 'string' ? JSON.parse(undoDataStr) : undoDataStr;
         
         if (type === 'DELETE_KEY') {
-            await set(ref(db, 'ActiveUserKeys/' + undoData.key), undoData.data);
-            globalSecondaryFirebases.forEach(fb => set(ref(fb.db, 'ActiveUserKeys/' + undoData.key), undoData.data).catch(()=>{}));
+            setAllKeyPaths(undoData.key, undoData.data);
             showToast("Key Restored Globally!");
         } else if (type === 'CREATE_KEY') {
-            await remove(ref(db, 'ActiveUserKeys/' + undoData.key));
-            globalSecondaryFirebases.forEach(fb => remove(ref(fb.db, 'ActiveUserKeys/' + undoData.key)).catch(()=>{}));
+            removeAllKeyPaths(undoData.key);
             showToast("Key Generation Undone!");
         } else if (type === 'EDIT_KEY') {
             const updates = { durationHours: undoData.oldHours };
-            await update(ref(db, 'ActiveUserKeys/' + undoData.key), updates);
-            globalSecondaryFirebases.forEach(fb => update(ref(fb.db, 'ActiveUserKeys/' + undoData.key), updates).catch(()=>{}));
+            updateAllKeyPaths(undoData.key, updates);
             showToast("Key Time Reverted Globally!");
         } else if (type === 'RESET_KEY') {
             const updates = { boundDeviceId: undoData.oldDevice, isUsed: true };
-            await update(ref(db, 'ActiveUserKeys/' + undoData.key), updates);
-            globalSecondaryFirebases.forEach(fb => update(ref(fb.db, 'ActiveUserKeys/' + undoData.key), updates).catch(()=>{}));
+            updateAllKeyPaths(undoData.key, updates);
             showToast("Device Re-bound Globally!");
         } else if (type === 'BAN_DEVICE') {
             await remove(ref(db, 'BannedDevices/' + undoData.deviceId));
             if (undoData.keyData) {
-                await set(ref(db, 'ActiveUserKeys/' + undoData.key), undoData.keyData);
-                globalSecondaryFirebases.forEach(fb => set(ref(fb.db, 'ActiveUserKeys/' + undoData.key), undoData.keyData).catch(()=>{}));
+                setAllKeyPaths(undoData.key, undoData.keyData);
             }
             showToast("Device Unbanned & Key Restored!");
         } else if (type === 'SETTINGS') {
@@ -302,6 +335,18 @@ function renderAuditLogs(logs) {
     });
     
     box.innerHTML = htmlStr || '<tr><td colspan="4" style="text-align:center;padding:20px;">No activity yet. Make a change to see logs here.</td></tr>';
+}
+
+function getLogActionColor(action) {
+    if (!action) return '#a1a1aa';
+    if (action.includes('CREATE') || action.includes('Created')) return '#34d399';
+    if (action.includes('DELETE') || action.includes('Deleted')) return '#ef4444';
+    if (action.includes('EDIT') || action.includes('Edited')) return '#60a5fa';
+    if (action.includes('RESET') || action.includes('Unbound')) return '#facc15';
+    if (action.includes('BAN') || action.includes('Banned')) return '#f472b6';
+    if (action.includes('SETTING') || action.includes('Settings')) return '#818cf8';
+    if (action.includes('LOGIN') || action.includes('Login')) return '#34d399';
+    return '#a1a1aa';
 }
 
 // ===== CHART =====
@@ -405,8 +450,7 @@ window.bulkDelete = async function() {
     for (const key of selectedKeys) {
         const item = globalKeysData.find(d => d.k === key);
         if (item) await logAdminActivity("Deleted Key", key, { key, data: item.d }, "DELETE_KEY");
-        await remove(ref(db, 'ActiveUserKeys/' + key)).catch(()=>{});
-        globalSecondaryFirebases.forEach(fb => remove(ref(fb.db, 'ActiveUserKeys/' + key)).catch(()=>{}));
+        removeAllKeyPaths(key);
     }
     showToast(`${selectedKeys.size} keys deleted globally!`);
     addNotification(`${selectedKeys.size} keys bulk deleted`);
@@ -420,8 +464,7 @@ window.bulkUnbind = async function() {
     for (const key of selectedKeys) {
         const item = globalKeysData.find(d => d.k === key);
         const updates = { boundDeviceId: "NONE", isUsed: false };
-        await update(ref(db, 'ActiveUserKeys/' + key), updates).catch(()=>{});
-        globalSecondaryFirebases.forEach(fb => update(ref(fb.db, 'ActiveUserKeys/' + key), updates).catch(()=>{}));
+        updateAllKeyPaths(key, updates);
         if (item) await logAdminActivity("Unbound Device", key, { key, oldDevice: item.d.boundDeviceId }, "RESET_KEY");
     }
     showToast(`${selectedKeys.size} keys unbound!`);
@@ -644,8 +687,7 @@ async function editHandler() {
     const newHours = prompt(`Update Hours for ${key}:`, item.d.durationHours);
     if (newHours && !isNaN(newHours)) {
         const updates = { durationHours: parseInt(newHours) };
-        await update(ref(db, `ActiveUserKeys/${key}`), updates).catch(()=>{});
-        globalSecondaryFirebases.forEach(fb => update(ref(fb.db, `ActiveUserKeys/${key}`), updates).catch(()=>{}));
+        updateAllKeyPaths(key, updates);
         await logAdminActivity("Edited Key Time", key, { key, oldHours: item.d.durationHours }, "EDIT_KEY");
         showToast("Time Updated Globally!");
         addNotification(`Key ${key} time edited`);
@@ -657,8 +699,7 @@ async function deleteHandler() {
     if (!key || !confirm(`Delete ${key} from ALL databases?`)) return;
     const item = globalKeysData.find(d => d.k === key);
     if (item) await logAdminActivity("Deleted Key", key, { key, data: item.d }, "DELETE_KEY");
-    await remove(ref(db, `ActiveUserKeys/${key}`)).catch(()=>{});
-    globalSecondaryFirebases.forEach(fb => remove(ref(fb.db, `ActiveUserKeys/${key}`)).catch(()=>{}));
+    removeAllKeyPaths(key);
     showToast("Key Deleted Globally!");
     addNotification(`Key ${key} deleted`);
 }
@@ -668,8 +709,7 @@ async function resetHandler() {
     if (!key || !confirm(`Unbind ${key} from current device?`)) return;
     const item = globalKeysData.find(d => d.k === key);
     const updates = { boundDeviceId: "NONE", isUsed: false };
-    await update(ref(db, `ActiveUserKeys/${key}`), updates).catch(()=>{});
-    globalSecondaryFirebases.forEach(fb => update(ref(fb.db, `ActiveUserKeys/${key}`), updates).catch(()=>{}));
+    updateAllKeyPaths(key, updates);
     await logAdminActivity("Unbound Device", key, { key, oldDevice: item?.d.boundDeviceId }, "RESET_KEY");
     showToast("Device Unbound Globally!");
     addNotification(`Key ${key} unbound from device`);
@@ -681,8 +721,7 @@ async function banHandler() {
     if (!deviceId || !key || !confirm(`Ban ${deviceId} and block access?`)) return;
     const item = globalKeysData.find(d => d.k === key);
     await set(ref(db, `BannedDevices/${deviceId}`), { date: serverTimestamp() });
-    await remove(ref(db, `ActiveUserKeys/${key}`)).catch(()=>{});
-    globalSecondaryFirebases.forEach(fb => remove(ref(fb.db, `ActiveUserKeys/${key}`)).catch(()=>{}));
+    removeAllKeyPaths(key);
     await logAdminActivity("Banned Device", deviceId, { deviceId, key, keyData: item?.d }, "BAN_DEVICE");
     showToast("Device Banned & Key Destroyed!", true);
     addNotification(`Device ${deviceId} banned`);
@@ -739,6 +778,10 @@ function loadData() {
             document.getElementById('keyTypeInput').value = data.defaultKeyTier;
             syncCustomSelect('keyTypeInput');
         }
+        if (data.customKeyPaths) {
+            globalCustomKeyPaths = Array.isArray(data.customKeyPaths) ? data.customKeyPaths : [];
+            renderKeyPathsList();
+        }
     });
 
     // Activity Log with real-time listener + get() fallback
@@ -763,11 +806,6 @@ function loadData() {
         const data = snap.exists() ? snap.val() : {};
         document.getElementById('lifetimeKeysCount').innerText = data.totalLifetimeGenerated || 0;
         renderGraph(data.DailyGenerations || {});
-    });
-
-    onValue(ref(db, 'ActiveUserKeys'), (snap) => {
-        allDbKeys['main'] = snap.exists() ? snap.val() : {};
-        debouncedRenderKeys();
     });
 
     loadNotifications();
@@ -988,12 +1026,18 @@ document.getElementById('generateBtn')?.addEventListener('click', async function
         btn.disabled = true;
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Syncing...';
         
-        // Write to mirrors first, then main (consistency)
+        // Write to Firebase Hubs (secondaries) ONLY — not main db
         for (let fb of globalSecondaryFirebases) {
             await set(ref(fb.db, 'ActiveUserKeys/' + newKey), kData).catch(e => console.error("Mirror sync:", e));
         }
-        await set(ref(db, 'ActiveUserKeys/' + newKey), kData);
-        
+
+        // Write to custom key paths in secondaries only
+        for (const customPath of globalCustomKeyPaths) {
+            for (const fb of globalSecondaryFirebases) {
+                await set(ref(fb.db, customPath + '/' + newKey), kData).catch(e => console.error("Custom path sync:", e));
+            }
+        }
+
         await update(ref(db, 'SystemStats'), { totalLifetimeGenerated: increment(1) }).catch(()=>{});
         const d = new Date();
         const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1020,8 +1064,7 @@ document.getElementById('cleanExpiredBtn')?.addEventListener('click', async func
         const cr = item.d.createdAt || now;
         const ex = cr + (item.d.durationHours * 60 * 60 * 1000);
         if (item.d.durationHours !== 99999 && now > ex) {
-            remove(ref(db, 'ActiveUserKeys/' + item.k)).catch(()=>{});
-            globalSecondaryFirebases.forEach(fb => remove(ref(fb.db, 'ActiveUserKeys/' + item.k)).catch(()=>{}));
+            removeAllKeyPaths(item.k);
             count++;
         }
     }
@@ -1114,6 +1157,59 @@ document.getElementById('manualBanBtn')?.addEventListener('click', async functio
     } catch (e) { showToast(e.message, true); }
 });
 
+// ===== CUSTOM KEY PATHS =====
+function renderKeyPathsList() {
+    const container = document.getElementById('keyPathsList');
+    if (!container) return;
+    if (globalCustomKeyPaths.length === 0) {
+        container.innerHTML = '<p style="font-size:12px; color:#52525b; text-align:center; padding:10px;">No custom paths added. Keys only sync to ActiveUserKeys.</p>';
+        return;
+    }
+    container.innerHTML = globalCustomKeyPaths.map(p => `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:rgba(15,15,18,0.6); border:1px solid #27272a; border-radius:10px; transition: all 0.2s;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <i class="fa-solid fa-folder" style="color:#facc15; font-size:14px;"></i>
+                <code style="font-family:'Space Mono',monospace; font-size:13px; color:#818cf8;">${p}</code>
+            </div>
+            <button class="action-icon icon-del" onclick="window.removeKeyPath('${p}')" style="padding:6px 10px;"><i class="fa-solid fa-trash"></i></button>
+        </div>
+    `).join('');
+}
+
+document.getElementById('addKeyPathBtn')?.addEventListener('click', async function() {
+    if (!db) return;
+    const input = document.getElementById('newKeyPath');
+    const path = input.value.trim().replace(/^\/+|\/+$/g, '');
+    if (!path) return showToast("Enter a path name", true);
+    if (path === 'ActiveUserKeys' || path === 'SystemSettings' || path === 'SystemStats' || path === 'BannedDevices' || path === 'AdminLogs' || path === 'AdminNotifications' || path === 'ConnectedFirebases') {
+        return showToast("Cannot use reserved path names", true);
+    }
+    if (globalCustomKeyPaths.includes(path)) return showToast("Path already exists", true);
+    
+    try {
+        globalCustomKeyPaths.push(path);
+        await set(ref(db, 'SystemSettings/customKeyPaths'), globalCustomKeyPaths);
+        await logAdminActivity("Added Key Path", path, { paths: [...globalCustomKeyPaths] }, "SETTINGS");
+        renderKeyPathsList();
+        input.value = '';
+        showToast(`Path "${path}" added!`);
+        addNotification(`Custom key path added: ${path}`);
+    } catch (e) { showToast(e.message, true); }
+});
+
+window.removeKeyPath = async function(path) {
+    if (!db) return;
+    if (!confirm(`Remove path "${path}"? Keys will no longer sync to this path.`)) return;
+    try {
+        globalCustomKeyPaths = globalCustomKeyPaths.filter(p => p !== path);
+        await set(ref(db, 'SystemSettings/customKeyPaths'), globalCustomKeyPaths);
+        await logAdminActivity("Removed Key Path", path, { paths: [...globalCustomKeyPaths] }, "SETTINGS");
+        renderKeyPathsList();
+        showToast(`Path "${path}" removed!`);
+        addNotification(`Custom key path removed: ${path}`);
+    } catch (e) { showToast(e.message, true); }
+};
+
 // ===== AUTO CLEANUP (with toggle) =====
 function startAutoCleanup() {
     if (cleanupInterval) clearInterval(cleanupInterval);
@@ -1125,8 +1221,7 @@ function startAutoCleanup() {
             const cr = item.d.createdAt || now;
             const ex = cr + (item.d.durationHours * 60 * 60 * 1000);
             if (item.d.durationHours !== 99999 && now > ex) {
-                remove(ref(db, 'ActiveUserKeys/' + item.k)).catch(()=>{});
-                globalSecondaryFirebases.forEach(fb => remove(ref(fb.db, 'ActiveUserKeys/' + item.k)).catch(()=>{}));
+                removeAllKeyPaths(item.k);
             }
         }
     }, 60000);

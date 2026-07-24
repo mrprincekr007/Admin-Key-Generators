@@ -15,7 +15,7 @@
     <div id="sidebarOverlay"></div>
     <div id="toastNotice">Saved Successfully</div>
 
-    <div id="mainWrapper" style="display: flex; width: 100%; height: 100vh;">
+    <div id="mainWrapper" style="display: flex; width: 100%; height: 100vh; overflow: hidden;">
         
         <div class="sidebar" id="sidebar">
             <div class="logo-area">
@@ -109,7 +109,7 @@
                             <input type="date" id="auditDateFrom" onchange="window.filterAuditLogs()" placeholder="From">
                             <input type="date" id="auditDateTo" onchange="window.filterAuditLogs()" placeholder="To">
                         </div>
-                        <div class="table-wrapper">
+                        <div class="table-wrapper" id="activityLogTableWrapper">
                             <table>
                                 <thead><tr><th>Action</th><th>Details</th><th>Time</th><th>Control</th></tr></thead>
                                 <tbody id="activityLogBody">
@@ -179,7 +179,7 @@
                                 <span class="slider round"></span>
                             </label>
                         </div>
-                        <div style="display: flex; gap: 10px;">
+                        <div class="gen-actions" style="display: flex; gap: 10px;">
                             <button class="btn-neon" id="generateBtn" style="flex:2;"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate & Sync</button>
                             <button class="btn-outline" id="saveDefaultDurationBtn" style="flex:1; border-color:#facc15; color:#facc15;"><i class="fa-solid fa-floppy-disk"></i> Save as Default</button>
                         </div>
@@ -309,7 +309,7 @@
                 <div class="page-header">
                     <h2 class="section-title"><i class="fa-solid fa-gear"></i> System Settings</h2>
                 </div>
-                <div class="dashboard-grid">
+                <div class="dashboard-grid settings-grid">
                     <div class="glow-card">
                         <h3 style="font-size: 16px; margin-bottom: 15px;"><i class="fa-solid fa-link"></i> Secret URLs</h3>
                         <span class="input-label">User Link Parameter (Generator Page)</span>
@@ -349,6 +349,18 @@
                             </label>
                         </div>
                         <button class="btn-outline" id="saveGlobalBtn">Save States</button>
+                    </div>
+                    <div class="glow-card" style="grid-column: 1 / -1;">
+                        <h3 style="font-size: 16px; margin-bottom: 5px; color:#facc15;"><i class="fa-solid fa-folder-tree"></i> Custom Key Paths</h3>
+                        <p style="font-size:12px; color:#71717a; margin-bottom:15px;">Keys will also be written to these Firebase paths alongside ActiveUserKeys. Add your app database paths here.</p>
+                        <div style="display:flex; gap:10px; margin-bottom:15px;">
+                            <input type="text" id="newKeyPath" class="input-dark" placeholder="e.g. users or app_data/user_keys" style="margin-bottom:0; flex:1;">
+                            <button class="btn-neon" id="addKeyPathBtn" style="width:auto; padding:12px 20px; flex-shrink:0;"><i class="fa-solid fa-plus"></i> Add</button>
+                        </div>
+                        <div id="keyPathsList" style="display:flex; flex-direction:column; gap:8px;"></div>
+                        <div style="margin-top:15px; padding:12px; background:rgba(250,204,21,0.08); border:1px solid rgba(250,204,21,0.2); border-radius:10px;">
+                            <p style="font-size:11px; color:#facc15; margin:0;"><i class="fa-solid fa-info-circle"></i> <b>How it works:</b> Keys are always written to <code style="background:rgba(250,204,21,0.15); padding:2px 6px; border-radius:4px;">ActiveUserKeys</code> by default. Adding paths here means keys are also synced to those paths in ALL connected databases (main + mirrors).</p>
+                        </div>
                     </div>
                 </div>
             </div>
